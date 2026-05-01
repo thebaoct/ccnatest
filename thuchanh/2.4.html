@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mô Phỏng Network Access: CDP & LLDP</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        /* Custom Animations & Styles */
+        @keyframes pulse-red {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+        .hacker-alert {
+            animation: pulse-red 2s infinite;
+        }
+        .packet {
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            background-color: #3b82f6;
+            border-radius: 50%;
+            z-index: 50;
+            transition: all 1.5s cubic-bezier(0.4, 0, 0.2, 1);
+            opacity: 0;
+            box-shadow: 0 0 8px #3b82f6;
+        }
+        .packet.cdp { background-color: #10b981; box-shadow: 0 0 8px #10b981; } /* Green for CDP */
+        .packet.lldp { background-color: #8b5cf6; box-shadow: 0 0 8px #8b5cf6; } /* Purple for LLDP */
+        
+        .topology-bg {
+            background-image: radial-gradient(#cbd5e1 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+        
+        /* SVG Line drawing animation */
+        .link-line {
+            stroke-dasharray: 1000;
+            stroke-dashoffset: 1000;
+            animation: drawLine 2s forwards;
+        }
+        @keyframes drawLine {
+            to { stroke-dashoffset: 0; }
+        }
+        
+        /* Custom Scrollbar for better UI on mobile & desktop */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        /* Hide scrollbar for topology container but allow scrolling */
+        .hide-scroll-bar::-webkit-scrollbar { display: none; }
+        .hide-scroll-bar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body class="bg-slate-100 font-sans text-slate-800 min-h-screen flex flex-col">
+
+    <!-- Header -->
+    <header class="bg-indigo-900 text-white p-4 shadow-md flex justify-between items-center z-20 sticky top-0">
+        <div class="flex items-center gap-3">
+            <i class="fas fa-network-wired text-2xl text-indigo-300"></i>
+            <div>
+                <h1 class="text-lg md:text-xl font-bold leading-tight">THE BÁO: 2.4 Mô Phỏng Layer 2: CDP & LLDP</h1>
+                <p class="text-[10px] md:text-xs text-indigo-200">Khám phá thiết bị & Rủi ro bảo mật</p>
+            </div>
+        </div>
+        <button onclick="showTheory()" class="bg-indigo-700 hover:bg-indigo-600 px-3 py-2 rounded text-xs md:text-sm font-semibold transition-colors border border-indigo-500 whitespace-nowrap">
+            <i class="fas fa-book-open md:mr-2"></i><span class="hidden md:inline">Lý Thuyết</span>
+        </button>
+    </header>
+
+    <!-- Main Content Layout -->
+    <main class="flex-1 flex flex-col lg:flex-row w-full max-w-[1600px] mx-auto bg-white shadow-xl">
+        
+        <!-- Left Panel: Topology & Visualizer -->
+        <section class="w-full lg:w-3/5 border-b lg:border-b-0 lg:border-r border-slate-200 flex flex-col bg-slate-50 relative">
+            
+            <!-- Mobile Scroll Instruction Bar -->
+            <div class="lg:hidden bg-indigo-50 text-indigo-600 text-xs text-center py-1.5 font-semibold flex items-center justify-center gap-2 border-b border-indigo-100 shadow-sm z-10">
+                <i class="fas fa-arrows-alt-h animate-pulse"></i> Vuốt ngang màn hình để xem toàn bộ sơ đồ mạng
+            </div>
+
+            <!-- Horizontal Scroll Wrapper -->
+            <!-- Đặt chiều rộng tối thiểu 700px để sơ đồ không bị bóp méo trên điện thoại -->
+            <div class="w-full overflow-x-auto overflow-y-hidden flex-1 relative hide-scroll-bar">
+                
+                <div class="relative min-w-[700px] h-[450px] lg:h-full lg:min-h-[600px] topology-bg mx-auto" id="topology-area">
+                    
+                    <!-- SVG Lines -->
+                    <svg class="absolute inset-0 w-full h-full pointer-events-none z-0" id="links-svg">
+                        <!-- Lines will be drawn here by JS -->
+                    </svg>
+
+                    <!-- Center: Switch 1 (Core) -->
+                    <div id="node-s1" class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 flex flex-col items-center z-10 cursor-pointer group" onclick="highlightConfig()">
+                        <div class="w-16 h-16 bg-blue-600 rounded-lg flex items-center justify-center text-white shadow-lg shadow-blue-500/30 group-hover:scale-110 transition-transform">
+                            <i class="fas fa-server text-2xl"></i>
+                        </div>
+                        <span class="mt-2 font-bold text-sm bg-white px-2 py-1 rounded shadow border border-slate-100">Switch-Core</span>
+                        <span class="text-[10px] text-slate-500">IP: 192.168.1.2</span>
+                    </div>
+
+                    <!-- Top: Router -->
+                    <div id="node-r1" class="absolute top-[15%] left-1/2 transform -translate-x-1/2 -translate-y-1/2 flex flex-col items-center z-10">
+                        <div class="w-14 h-14 bg-emerald-500 rounded-full flex items-center justify-center text-white shadow-lg">
+                            <i class="fas fa-route text-xl"></i>
+                        </div>
+                        <span class="mt-2 font-bold text-sm bg-white px-2 py-1 rounded shadow border border-slate-100">Router-GW</span>
+                        <span class="text-[10px] text-slate-600 bg-white px-1.5 py-0.5 rounded border border-slate-200 absolute -bottom-6 font-mono">Gi0/1</span>
+                    </div>
+
+                    <!-- Right: Switch 2 -->
+                    <div id="node-s2" class="absolute top-1/2 left-[85%] transform -translate-x-1/2 -translate-y-1/2 flex flex-col items-center z-10">
+                        <div class="w-14 h-14 bg-blue-400 rounded-lg flex items-center justify-center text-white shadow-lg">
+                            <i class="fas fa-network-wired text-xl"></i>
+                        </div>
+                        <span class="mt-2 font-bold text-sm bg-white px-2 py-1 rounded shadow border border-slate-100">Switch-Access</span>
+                        <span class="text-[10px] text-slate-600 bg-white px-1.5 py-0.5 rounded border border-slate-200 absolute -left-10 top-5 font-mono">Gi0/2</span>
+                    </div>
+
+                    <!-- Bottom: Attacker PC -->
+                    <div id="node-attacker" class="absolute top-[85%] left-1/2 transform -translate-x-1/2 -translate-y-1/2 flex flex-col items-center z-10">
+                        <div id="attacker-icon" class="w-14 h-14 bg-slate-800 rounded flex items-center justify-center text-white shadow-lg transition-colors duration-300">
+                            <i class="fas fa-laptop-code text-xl" id="attacker-fas"></i>
+                        </div>
+                        <span class="mt-2 font-bold text-sm text-red-600 bg-red-50 border border-red-200 px-2 py-1 rounded shadow">PC Khách (Untrusted)</span>
+                        <span class="text-[10px] text-slate-600 bg-white px-1.5 py-0.5 rounded border border-slate-200 absolute -top-6 font-mono">Fa0/24</span>
+                    </div>
+
+                </div>
+            </div>
+            
+            <!-- Legend (Fixed Position relative to the section) -->
+            <div class="absolute bottom-4 left-4 bg-white/95 p-3 rounded shadow-md text-xs border border-slate-200 z-20 pointer-events-none">
+                <p class="font-bold mb-2 text-slate-700">Chú giải gói tin:</p>
+                <div class="flex items-center gap-2 mb-1"><div class="w-3 h-3 rounded-full bg-emerald-500 shadow-sm"></div> CDP (Cisco)</div>
+                <div class="flex items-center gap-2"><div class="w-3 h-3 rounded-full bg-purple-500 shadow-sm"></div> LLDP (Tiêu chuẩn)</div>
+            </div>
+        </section>
+
+        <!-- Right Panel: Controls & Logs -->
+        <section class="w-full lg:w-2/5 flex flex-col bg-white" id="config-panel">
+            
+            <!-- Configuration Area -->
+            <div class="p-4 md:p-5 border-b border-slate-200 bg-white shadow-sm z-10">
+                <h2 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                    <i class="fas fa-cogs text-indigo-500"></i> Cấu hình Switch-Core
+                </h2>
+                
+                <!-- Global Config & Button -->
+                <div class="flex flex-col sm:flex-row gap-4 mb-5">
+                    <div class="bg-slate-50 p-3 rounded-lg border border-slate-200 flex-1">
+                        <div class="text-sm font-semibold text-slate-600 mb-2 border-b border-slate-200 pb-1">Trạng thái Toàn cục (Global)</div>
+                        <div class="flex gap-6 text-sm font-medium">
+                            <label class="flex items-center gap-2 cursor-pointer hover:text-indigo-600 transition-colors">
+                                <input type="checkbox" id="global-cdp" checked class="w-4 h-4 text-emerald-500 rounded focus:ring-emerald-500">
+                                <span>Run CDP</span>
+                            </label>
+                            <label class="flex items-center gap-2 cursor-pointer hover:text-indigo-600 transition-colors">
+                                <input type="checkbox" id="global-lldp" class="w-4 h-4 text-purple-600 rounded focus:ring-purple-500">
+                                <span>Run LLDP</span>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <button onclick="runSimulation()" class="sm:w-1/3 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg shadow-md transition-all active:scale-95 flex items-center justify-center gap-2">
+                        <i class="fas fa-play"></i> Thực Thi
+                    </button>
+                </div>
+
+                <!-- Interface Config -->
+                <h3 class="text-sm font-bold text-slate-600 mb-3">Cấu hình từng cổng (Interface)</h3>
+                <div class="space-y-3 text-sm">
+                    <!-- Port to Router -->
+                    <div class="flex flex-wrap sm:flex-nowrap items-center justify-between p-2.5 bg-slate-50 rounded-lg border border-slate-200 hover:border-slate-300 transition-colors">
+                        <div class="flex items-center gap-2 w-1/2 sm:w-1/3">
+                            <i class="fas fa-route text-emerald-500"></i> <span class="font-mono font-bold text-slate-700">Gi0/1</span>
+                        </div>
+                        <span class="text-xs text-slate-500 w-1/2 sm:w-1/3 text-right sm:text-center">Nối Router-GW</span>
+                        <div class="flex items-center gap-4 w-full sm:w-1/3 justify-end mt-2 sm:mt-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-200">
+                            <label class="flex items-center gap-1.5 cursor-pointer font-medium"><input type="checkbox" id="port-r1-cdp" checked class="w-3.5 h-3.5 text-emerald-500"> CDP</label>
+                            <label class="flex items-center gap-1.5 cursor-pointer font-medium"><input type="checkbox" id="port-r1-lldp" checked class="w-3.5 h-3.5 text-purple-500"> LLDP</label>
+                        </div>
+                    </div>
+                    
+                    <!-- Port to Switch 2 -->
+                    <div class="flex flex-wrap sm:flex-nowrap items-center justify-between p-2.5 bg-slate-50 rounded-lg border border-slate-200 hover:border-slate-300 transition-colors">
+                        <div class="flex items-center gap-2 w-1/2 sm:w-1/3">
+                            <i class="fas fa-network-wired text-blue-400"></i> <span class="font-mono font-bold text-slate-700">Gi0/2</span>
+                        </div>
+                        <span class="text-xs text-slate-500 w-1/2 sm:w-1/3 text-right sm:text-center">Nối Switch Access</span>
+                        <div class="flex items-center gap-4 w-full sm:w-1/3 justify-end mt-2 sm:mt-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-200">
+                            <label class="flex items-center gap-1.5 cursor-pointer font-medium"><input type="checkbox" id="port-s2-cdp" checked class="w-3.5 h-3.5 text-emerald-500"> CDP</label>
+                            <label class="flex items-center gap-1.5 cursor-pointer font-medium"><input type="checkbox" id="port-s2-lldp" checked class="w-3.5 h-3.5 text-purple-500"> LLDP</label>
+                        </div>
+                    </div>
+
+                    <!-- Port to Attacker -->
+                    <div class="flex flex-wrap sm:flex-nowrap items-center justify-between p-2.5 bg-red-50/50 rounded-lg border border-red-200 relative overflow-hidden group hover:bg-red-50 transition-colors">
+                        <div class="flex items-center gap-2 w-1/2 sm:w-1/3 relative z-10">
+                            <i class="fas fa-laptop text-slate-700"></i> <span class="font-mono font-bold text-red-700">Fa0/24</span>
+                        </div>
+                        <span class="text-xs text-red-600 font-semibold w-1/2 sm:w-1/3 text-right sm:text-center relative z-10">Untrusted / PC</span>
+                        <div class="flex items-center gap-4 w-full sm:w-1/3 justify-end mt-2 sm:mt-0 pt-2 sm:pt-0 border-t border-red-100 sm:border-t-0 relative z-10">
+                            <label class="flex items-center gap-1.5 cursor-pointer font-medium"><input type="checkbox" id="port-att-cdp" checked class="w-3.5 h-3.5 text-emerald-500"> CDP</label>
+                            <label class="flex items-center gap-1.5 cursor-pointer font-medium"><input type="checkbox" id="port-att-lldp" class="w-3.5 h-3.5 text-purple-500"> LLDP</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dashboard Split (Neighbors & Console) -->
+            <div class="flex flex-col lg:flex-1 h-[600px] lg:h-auto border-t-8 border-slate-100 lg:border-t-0">
+                
+                <!-- Neighbor Table -->
+                <div class="flex-1 flex flex-col border-b border-slate-200 bg-white min-h-[250px]">
+                    <div class="bg-slate-50 p-2.5 border-b border-slate-200 flex justify-between items-center shrink-0">
+                        <span class="font-bold text-sm text-slate-700"><i class="fas fa-table mr-2 text-indigo-400"></i>Bảng Láng Giềng (Neighbor Table)</span>
+                        <button onclick="clearTable()" class="text-xs text-slate-500 hover:text-red-500 bg-white px-2 py-1 rounded border shadow-sm transition-colors"><i class="fas fa-trash mr-1"></i> Xóa</button>
+                    </div>
+                    <div class="flex-1 overflow-y-auto p-0">
+                        <table class="w-full text-left text-xs md:text-sm">
+                            <thead class="bg-white sticky top-0 shadow-sm z-10">
+                                <tr>
+                                    <th class="p-2.5 border-b text-slate-500 font-semibold">Device ID</th>
+                                    <th class="p-2.5 border-b text-slate-500 font-semibold">Local Intf</th>
+                                    <th class="p-2.5 border-b text-slate-500 font-semibold">Protocol</th>
+                                    <th class="p-2.5 border-b text-slate-500 font-semibold">Platform</th>
+                                </tr>
+                            </thead>
+                            <tbody id="neighbor-tbody">
+                                <tr><td colspan="4" class="p-6 text-center text-slate-400 italic">Chưa có thiết bị nào được khám phá.<br>Hãy bấm <strong>Thực Thi</strong> để mô phỏng.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Console Log -->
+                <div class="flex-1 flex flex-col bg-slate-900 relative text-slate-300 min-h-[250px]">
+                    <div class="bg-slate-800 p-2.5 border-b border-slate-700 flex justify-between items-center shrink-0">
+                        <span class="font-bold text-sm text-emerald-400"><i class="fas fa-terminal mr-2"></i>Console Log</span>
+                        <button onclick="clearLog()" class="text-xs text-slate-400 hover:text-white bg-slate-700 px-2 py-1 rounded transition-colors"><i class="fas fa-eraser mr-1"></i> Clear</button>
+                    </div>
+                    <div class="flex-1 overflow-y-auto p-3.5 text-xs md:text-sm font-mono leading-relaxed" id="console-log">
+                        <div class="text-emerald-500 mb-1">Switch-Core# Hệ thống sẵn sàng...</div>
+                        <div class="text-slate-500 mb-1">Hãy thiết lập cổng và nhấn "Thực Thi" để xem cách gói tin CDP/LLDP hoạt động.</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Theory Modal -->
+    <div id="theory-modal" class="fixed inset-0 bg-slate-900/80 z-50 hidden flex items-center justify-center p-4 backdrop-blur-sm transition-opacity">
+        <div class="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden">
+            <div class="p-4 md:p-5 border-b border-slate-200 bg-indigo-50 flex justify-between items-center">
+                <h2 class="text-lg md:text-xl font-bold text-indigo-900"><i class="fas fa-book-reader mr-2"></i>Lý Thuyết: CDP & LLDP</h2>
+                <button onclick="hideTheory()" class="text-slate-500 hover:text-red-500 text-xl w-8 h-8 flex items-center justify-center rounded-full hover:bg-white transition-colors"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="p-5 md:p-6 overflow-y-auto flex-1 text-sm text-slate-700 leading-relaxed space-y-5">
+                
+                <div class="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                    <h3 class="font-bold text-blue-800 mb-2">1. Giao thức khám phá láng giềng là gì?</h3>
+                    <p>Là các giao thức hoạt động ở <strong>Layer 2 (Data Link)</strong> giúp các thiết bị mạng kết nối trực tiếp với nhau có thể thu thập thông tin phần cứng và cấu hình của nhau (như Hostname, IP Management, OS version, VLAN...).</p>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="border border-emerald-200 p-4 rounded-lg bg-emerald-50/30">
+                        <h4 class="font-bold text-emerald-700 mb-2 border-b border-emerald-100 pb-2">CDP (Cisco Discovery Protocol)</h4>
+                        <ul class="list-disc pl-5 space-y-1.5 text-xs md:text-sm">
+                            <li>Độc quyền của hãng Cisco.</li>
+                            <li>Bật mặc định trên mọi thiết bị Cisco.</li>
+                            <li>Sử dụng địa chỉ Multicast MAC:<br><code class="bg-white px-1 py-0.5 rounded text-[10px] md:text-xs">01:00:0c:cc:cc:cc</code></li>
+                            <li>Lệnh toàn cục: <code>cdp run</code></li>
+                            <li>Lệnh cổng: <code>cdp enable</code></li>
+                        </ul>
+                    </div>
+                    <div class="border border-purple-200 p-4 rounded-lg bg-purple-50/30">
+                        <h4 class="font-bold text-purple-700 mb-2 border-b border-purple-100 pb-2">LLDP (Link Layer Discovery Protocol)</h4>
+                        <ul class="list-disc pl-5 space-y-1.5 text-xs md:text-sm">
+                            <li>Tiêu chuẩn quốc tế (IEEE 802.1AB), dùng được cho mọi thiết bị.</li>
+                            <li>Thường tắt mặc định trên Cisco.</li>
+                            <li>Sử dụng địa chỉ Multicast MAC:<br><code class="bg-white px-1 py-0.5 rounded text-[10px] md:text-xs">01:80:c2:00:00:0e</code></li>
+                            <li>Lệnh toàn cục: <code>lldp run</code></li>
+                            <li>Lệnh cổng: <code>lldp transmit</code></li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="bg-red-50 p-4 md:p-5 rounded-lg border border-red-200 mt-2 shadow-inner">
+                    <h3 class="font-bold text-red-700 mb-2 text-base"><i class="fas fa-exclamation-triangle mr-2"></i>Rủi Ro Bảo Mật (Hậu quả cấu hình sai)</h3>
+                    <p>Cả CDP và LLDP đều truyền thông tin dưới dạng <strong>Clear-text (không mã hóa)</strong> và gửi Broadcast/Multicast. Nếu bạn không tắt chúng trên các cổng giao tiếp kết nối với các thiết bị End-user (PC, Mạng Wi-Fi công cộng), kẻ tấn công sử dụng công cụ như Wireshark có thể bắt được gói tin này.</p>
+                    <p class="mt-3 text-red-700 font-semibold">Thông tin bị lộ bao gồm:</p>
+                    <ul class="list-disc pl-5 text-xs md:text-sm text-red-600 font-medium">
+                        <li>Địa chỉ IP Management của Switch/Router.</li>
+                        <li>Phiên bản hệ điều hành (IOS) - Hacker tra cứu được lỗ hổng CVE.</li>
+                        <li>Native VLAN ID - Dẫn đến tấn công VLAN Hopping.</li>
+                    </ul>
+                    <div class="mt-4 bg-slate-800 rounded-md overflow-hidden">
+                        <div class="bg-slate-900 px-3 py-1.5 text-xs text-slate-400 font-mono flex justify-between">
+                            <span>Khắc phục trên Interface Fa0/24</span>
+                        </div>
+                        <code class="block text-emerald-400 p-3 text-xs md:text-sm font-mono leading-relaxed">
+                            Switch(config)# interface Fa0/24<br>
+                            Switch(config-if)# no cdp enable<br>
+                            Switch(config-if)# no lldp transmit
+                        </code>
+                    </div>
+                </div>
+            </div>
+            <div class="p-4 md:p-5 border-t border-slate-200 bg-slate-50 text-right">
+                <button onclick="hideTheory()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-lg shadow-md font-semibold transition-transform active:scale-95 w-full sm:w-auto">Đã hiểu, vào Mô Phỏng</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Script Logic -->
+    <script>
+        // --- Topology Draw & Line logic ---
+        function drawLines() {
+            const svg = document.getElementById('links-svg');
+            svg.innerHTML = ''; 
+            
+            const s1 = document.getElementById('node-s1');
+            const nodes = ['node-r1', 'node-s2', 'node-attacker'];
+            
+            // Lấy toạ độ tâm của thiết bị tương đối so với thẻ cha (topology-area)
+            // Cách này đảm bảo đường kẻ luôn đúng kể cả khi người dùng vuốt ngang trên mobile
+            const getCenter = (el) => {
+                const containerRect = document.getElementById('topology-area').getBoundingClientRect();
+                const rect = el.getBoundingClientRect();
+                return {
+                    x: (rect.left - containerRect.left) + rect.width / 2,
+                    y: (rect.top - containerRect.top) + rect.height / 2
+                };
+            };
+
+            const s1Pos = getCenter(s1);
+
+            nodes.forEach(nodeId => {
+                const target = document.getElementById(nodeId);
+                const tPos = getCenter(target);
+                
+                const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                line.setAttribute('x1', s1Pos.x);
+                line.setAttribute('y1', s1Pos.y);
+                line.setAttribute('x2', tPos.x);
+                line.setAttribute('y2', tPos.y);
+                line.setAttribute('stroke', '#94a3b8');
+                line.setAttribute('stroke-width', '2.5');
+                line.setAttribute('class', 'link-line');
+                
+                svg.appendChild(line);
+            });
+        }
+
+        // Vẽ dây khi tải trang, resize trình duyệt
+        window.addEventListener('load', drawLines);
+        window.addEventListener('resize', drawLines);
+
+        // --- Simulation Logic ---
+        let neighborTable = [];
+        const consoleEl = document.getElementById('console-log');
+        const tbody = document.getElementById('neighbor-tbody');
+
+        function logConsole(msg, type = 'info') {
+            const div = document.createElement('div');
+            div.className = 'mb-1.5 ' + (
+                type === 'error' ? 'text-red-400 bg-red-900/30 p-2 rounded border border-red-800' : 
+                type === 'warn' ? 'text-yellow-400' : 
+                type === 'success' ? 'text-emerald-400 font-bold' : 
+                'text-slate-300'
+            );
+            
+            const time = new Date().toLocaleTimeString([], { hour12: false });
+            div.innerHTML = `<span class="text-slate-500 mr-2">[${time}]</span> ${msg}`;
+            consoleEl.appendChild(div);
+            // Tự động cuộn xuống dòng mới nhất
+            consoleEl.scrollTop = consoleEl.scrollHeight;
+        }
+
+        function clearLog() {
+            consoleEl.innerHTML = '';
+        }
+
+        function clearTable() {
+            neighborTable = [];
+            renderTable();
+            logConsole("Đã xóa bảng láng giềng.", "warn");
+        }
+
+        function renderTable() {
+            if (neighborTable.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="p-6 text-center text-slate-400 italic">Bảng láng giềng trống.</td></tr>';
+                return;
+            }
+            tbody.innerHTML = '';
+            // Lọc thiết bị trùng lặp dựa vào ID và Protocol
+            const uniqueNeighbors = [...new Map(neighborTable.map(item => [item.id+item.protocol, item])).values()];
+            
+            uniqueNeighbors.forEach(n => {
+                const protocolColor = n.protocol === 'CDP' ? 'bg-emerald-100 text-emerald-800 border-emerald-200' : 'bg-purple-100 text-purple-800 border-purple-200';
+                tbody.innerHTML += `
+                    <tr class="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                        <td class="p-2.5 font-semibold text-slate-700">${n.id}</td>
+                        <td class="p-2.5 font-mono text-slate-600 text-xs">${n.intf}</td>
+                        <td class="p-2.5"><span class="px-2 py-1 rounded text-[10px] md:text-xs font-bold border ${protocolColor}">${n.protocol}</span></td>
+                        <td class="p-2.5 text-slate-600 text-xs md:text-sm">${n.platform}</td>
+                    </tr>
+                `;
+            });
+        }
+
+        function animatePacket(type, targetNodeId, intfName, isAttacker = false) {
+            return new Promise(resolve => {
+                const s1 = document.getElementById('node-s1');
+                const target = document.getElementById(targetNodeId);
+                const container = document.getElementById('topology-area');
+                
+                const s1Rect = s1.getBoundingClientRect();
+                const targetRect = target.getBoundingClientRect();
+                const containerRect = container.getBoundingClientRect();
+
+                const packet = document.createElement('div');
+                packet.className = `packet ${type.toLowerCase()}`;
+                
+                // Điểm bắt đầu (tương đối so với container cuộn ngang)
+                const startX = (s1Rect.left - containerRect.left) + s1Rect.width/2 - 6;
+                const startY = (s1Rect.top - containerRect.top) + s1Rect.height/2 - 6;
+                
+                packet.style.left = startX + 'px';
+                packet.style.top = startY + 'px';
+                
+                container.appendChild(packet);
+
+                // Kích hoạt CSS để trình duyệt ghi nhận vị trí
+                packet.getBoundingClientRect();
+
+                // Điểm kết thúc
+                const endX = (targetRect.left - containerRect.left) + targetRect.width/2 - 6;
+                const endY = (targetRect.top - containerRect.top) + targetRect.height/2 - 6;
+
+                packet.style.opacity = '1';
+                packet.style.transform = `translate(${endX - startX}px, ${endY - startY}px)`;
+
+                setTimeout(() => {
+                    packet.remove();
+                    
+                    // Hiệu ứng nháy thiết bị đích khi nhận được gói tin
+                    const iconBox = target.querySelector('div');
+                    const origScale = iconBox.style.transform;
+                    iconBox.style.transform = 'scale(1.2)';
+                    
+                    if(isAttacker) {
+                        iconBox.classList.add('bg-red-600');
+                        iconBox.classList.remove('bg-slate-800');
+                        document.getElementById('attacker-fas').classList.replace('fa-laptop-code', 'fa-skull-crossbones');
+                        target.classList.add('hacker-alert');
+                    } else {
+                        iconBox.classList.add('ring-4', 'ring-emerald-400', 'ring-opacity-60');
+                        setTimeout(() => iconBox.classList.remove('ring-4', 'ring-emerald-400', 'ring-opacity-60'), 500);
+                    }
+
+                    setTimeout(() => {
+                        iconBox.style.transform = origScale || 'scale(1)';
+                    }, 300);
+
+                    resolve();
+                }, 1500);
+            });
+        }
+
+        async function runSimulation() {
+            // Lấy trạng thái từ checkbox
+            const globalCdp = document.getElementById('global-cdp').checked;
+            const globalLldp = document.getElementById('global-lldp').checked;
+
+            if (!globalCdp && !globalLldp) {
+                logConsole("LỖI: CDP và LLDP đều đang tắt (Global). Không có gói tin nào được gửi đi.", "error");
+                return;
+            }
+
+            const ports = [
+                { id: 'r1', name: 'Gi0/1', node: 'node-r1', cdp: 'port-r1-cdp', lldp: 'port-r1-lldp', device: 'Router-GW', platform: 'Cisco 2911' },
+                { id: 's2', name: 'Gi0/2', node: 'node-s2', cdp: 'port-s2-cdp', lldp: 'port-s2-lldp', device: 'Switch-Access', platform: 'Cisco C2960' },
+                { id: 'att', name: 'Fa0/24', node: 'node-attacker', cdp: 'port-att-cdp', lldp: 'port-att-lldp', device: 'Attacker', platform: 'Kali Linux', isAttacker: true }
+            ];
+
+            logConsole("--- Bắt đầu gửi gói tin Discovery ---", "info");
+
+            let packetSent = false;
+
+            // Reset đồ hoạ của Kẻ tấn công
+            const attIconBox = document.getElementById('node-attacker').querySelector('div');
+            attIconBox.classList.remove('bg-red-600');
+            attIconBox.classList.add('bg-slate-800');
+            document.getElementById('attacker-fas').classList.replace('fa-skull-crossbones', 'fa-laptop-code');
+            document.getElementById('node-attacker').classList.remove('hacker-alert');
+
+            for (const port of ports) {
+                const portCdp = document.getElementById(port.cdp).checked;
+                const portLldp = document.getElementById(port.lldp).checked;
+
+                // Xử lý gửi CDP
+                if (globalCdp && portCdp) {
+                    packetSent = true;
+                    logConsole(`Gửi gói tin CDP qua cổng ${port.name}...`);
+                    animatePacket('CDP', port.node, port.name, port.isAttacker);
+                    
+                    if (!port.isAttacker) {
+                        setTimeout(() => {
+                            logConsole(`Phát hiện láng giềng: ${port.device} qua ${port.name} (CDP)`, "success");
+                            neighborTable.push({ id: port.device, intf: port.name, protocol: 'CDP', platform: port.platform });
+                            renderTable();
+                        }, 1500);
+                    } else {
+                        setTimeout(() => {
+                            logConsole(`!!! CẢNH BÁO BẢO MẬT KHI CHẠY CDP TRÊN CỔNG ACCESS !!!`, "error");
+                            logConsole(`Kẻ tấn công tại Fa0/24 đã bắt được gói tin CDP.`, "error");
+                            logConsole(`Lộ thông tin: Hostname(Switch-Core), IP(192.168.1.2), OS(IOS v15.2), NativeVLAN(1)`, "error");
+                        }, 1500);
+                    }
+                }
+
+                // Xử lý gửi LLDP
+                if (globalLldp && portLldp) {
+                    setTimeout(() => {
+                        packetSent = true;
+                        logConsole(`Gửi gói tin LLDP qua cổng ${port.name}...`);
+                        animatePacket('LLDP', port.node, port.name, port.isAttacker);
+                        
+                        if (!port.isAttacker) {
+                            setTimeout(() => {
+                                logConsole(`Phát hiện láng giềng: ${port.device} qua ${port.name} (LLDP)`, "success");
+                                neighborTable.push({ id: port.device, intf: port.name, protocol: 'LLDP', platform: port.platform });
+                                renderTable();
+                            }, 1500);
+                        } else {
+                            setTimeout(() => {
+                                logConsole(`!!! CẢNH BÁO BẢO MẬT KHI CHẠY LLDP TRÊN CỔNG ACCESS !!!`, "error");
+                                logConsole(`Kẻ tấn công tại Fa0/24 đã bắt được gói tin LLDP. Thu thập đủ System Capabilities và Management Address!`, "error");
+                            }, 1500);
+                        }
+                    }, (globalCdp && portCdp) ? 800 : 0); // Delay nhẹ nếu gửi cả CDP và LLDP cùng lúc
+                }
+            }
+
+            if (!packetSent) {
+                logConsole("Không có gói tin nào được gửi đi do cấu hình Interface đã tắt hết.", "warn");
+            }
+        }
+
+        // --- Modals & UX ---
+        function showTheory() {
+            document.getElementById('theory-modal').classList.remove('hidden');
+        }
+
+        function hideTheory() {
+            document.getElementById('theory-modal').classList.add('hidden');
+        }
+
+        function highlightConfig() {
+            const panel = document.getElementById('config-panel');
+            panel.classList.add('ring-4', 'ring-indigo-400', 'transition-all', 'duration-300');
+            setTimeout(() => panel.classList.remove('ring-4', 'ring-indigo-400'), 600);
+            
+            // Tự động cuộn xuống phần bảng điều khiển trên Mobile khi bấm vào Switch Core
+            if(window.innerWidth < 1024) {
+                panel.scrollIntoView({ behavior: 'smooth' });
+            }
+        }
+
+        // Hiển thị lý thuyết khi vừa vào trang để học viên nắm thông tin
+        window.addEventListener('DOMContentLoaded', () => {
+            setTimeout(showTheory, 600);
+        });
+
+    </script>
+</body>
+</html>

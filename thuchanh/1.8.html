@@ -1,0 +1,840 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trình Mô Phỏng Ảo Hóa Chuyên Sâu (Virtual Machines)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .progress-bar { transition: width 0.8s ease-in-out, background-color 0.3s ease; }
+        .vm-card-enter { animation: fadeIn 0.4s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+        .shake { animation: shake 0.4s; }
+        @keyframes shake {
+            0% { transform: translateX(0); } 25% { transform: translateX(-5px); }
+            50% { transform: translateX(5px); } 75% { transform: translateX(-5px); } 100% { transform: translateX(0); }
+        }
+        .crt-effect { position: relative; }
+        .crt-effect::after {
+            content: ""; display: block; position: absolute;
+            top: 0; left: 0; bottom: 0; right: 0;
+            background: rgba(255, 0, 0, 0.1); opacity: 0; z-index: 10; pointer-events: none;
+        }
+        .host-crashed .crt-effect::after { opacity: 1; animation: flicker 0.2s infinite; }
+        .host-overload .crt-effect::after { background: rgba(255, 165, 0, 0.15); opacity: 1; animation: pulse 1s infinite; }
+        @keyframes flicker { 0% { opacity: 0.2; } 50% { opacity: 0.5; } 100% { opacity: 0.2; } }
+        @keyframes pulse { 0% { opacity: 0.2; } 50% { opacity: 0.8; } 100% { opacity: 0.2; } }
+        
+        /* Custom Toggle Switch */
+        .toggle-checkbox:checked { right: 0; border-color: #4ade80; }
+        .toggle-checkbox:checked + .toggle-label { background-color: #4ade80; }
+        .toggle-checkbox { right: 4px; z-index: 1; border-color: #e5e7eb; transition: all 0.3s; }
+        .toggle-label { background-color: #e5e7eb; transition: all 0.3s; }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-800 font-sans min-h-screen flex flex-col">
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white p-4 shadow-lg sticky top-0 z-50">
+        <div class="container mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
+            <div>
+                <h1 class="text-2xl font-bold flex items-center"><i class="fas fa-server text-blue-400 mr-3"></i> THE BÁO: 1.8 Mô Phỏng Ảo Hóa Nâng Cao</h1>
+                <p class="text-xs text-slate-400 mt-1">Resource Pooling, Isolation, Overcommit & Snapshots</p>
+            </div>
+            <div class="flex gap-3">
+                <button onclick="toggleSimulation()" id="btnSimToggle" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-semibold transition flex items-center">
+                    <i class="fas fa-pause mr-2" id="simIcon"></i> <span id="simText">Tạm dừng TG Thực</span>
+                </button>
+                <button onclick="resetSystem()" class="bg-red-500 hover:bg-red-600 border border-red-700 text-white px-4 py-2 rounded font-bold transition flex items-center shadow-lg">
+                    <i class="fas fa-power-off mr-2 animate-pulse"></i> Khôi phục Hệ thống
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="container mx-auto p-4 flex-grow flex flex-col lg:flex-row gap-6 mt-4">
+        
+        <!-- Left Column: Physical Host & Controls -->
+        <div class="w-full lg:w-1/3 flex flex-col gap-5">
+            
+            <!-- Host Panel -->
+            <div id="hostPanel" class="bg-white rounded-xl shadow-md p-5 border-t-4 border-blue-600 crt-effect relative overflow-hidden">
+                <div class="flex justify-between items-center mb-4 border-b pb-2">
+                    <h2 class="text-lg font-bold text-slate-800"><i class="fas fa-microchip text-blue-600 mr-2"></i>Máy Chủ Vật Lý (Host)</h2>
+                    <span id="hostStatusBadge" class="bg-green-100 text-green-800 text-xs font-bold px-2 py-1 rounded">Bình thường</span>
+                </div>
+                
+                <!-- CPU -->
+                <div class="mb-3">
+                    <div class="flex justify-between text-xs font-semibold text-slate-600 mb-1">
+                        <span><i class="fas fa-microchip mr-1"></i> CPU Thực tế (16 Cores)</span>
+                        <span id="hostCpuText">0%</span>
+                    </div>
+                    <div class="w-full bg-slate-200 rounded-full h-3 relative">
+                        <!-- Used Bar -->
+                        <div id="hostCpuBar" class="bg-blue-500 h-3 rounded-full progress-bar absolute top-0 left-0" style="width: 0%"></div>
+                        <!-- Allocated Marker -->
+                        <div id="hostCpuAllocatedMarker" class="h-4 w-1 bg-red-500 absolute top-[-2px] z-10" style="left: 0%" title="Đã cấp phát"></div>
+                    </div>
+                    <div class="text-[10px] text-slate-400 mt-1 flex justify-between">
+                        <span id="hostCpuAllocText">Đã cấp phát: 0</span>
+                        <span>Vạch đỏ: Giới hạn cấp phát</span>
+                    </div>
+                </div>
+
+                <!-- RAM -->
+                <div class="mb-3">
+                    <div class="flex justify-between text-xs font-semibold text-slate-600 mb-1">
+                        <span><i class="fas fa-memory mr-1"></i> RAM Thực tế (32 GB)</span>
+                        <span id="hostRamText">0%</span>
+                    </div>
+                    <div class="w-full bg-slate-200 rounded-full h-3 relative">
+                        <div id="hostRamBar" class="bg-green-500 h-3 rounded-full progress-bar absolute top-0 left-0" style="width: 0%"></div>
+                        <div id="hostRamAllocatedMarker" class="h-4 w-1 bg-red-500 absolute top-[-2px] z-10" style="left: 0%"></div>
+                    </div>
+                    <div class="text-[10px] text-slate-400 mt-1 flex justify-between">
+                        <span id="hostRamAllocText">Đã cấp phát: 0 GB</span>
+                    </div>
+                </div>
+
+                <!-- Storage -->
+                <div class="mb-4">
+                    <div class="flex justify-between text-xs font-semibold text-slate-600 mb-1">
+                        <span><i class="fas fa-hdd mr-1"></i> Ổ cứng SSD (1000 GB)</span>
+                        <span id="hostDiskText">0 / 1000 GB</span>
+                    </div>
+                    <div class="w-full bg-slate-200 rounded-full h-3">
+                        <div id="hostDiskBar" class="bg-purple-500 h-3 rounded-full progress-bar" style="width: 0%"></div>
+                    </div>
+                </div>
+
+                <!-- Hypervisor Settings -->
+                <div class="mt-4 p-3 bg-slate-50 border rounded-lg text-sm">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="font-semibold text-slate-700 tooltip" title="Cho phép tổng tài nguyên VM lớn hơn thật. Dựa trên việc không phải VM nào cũng dùng 100% cùng lúc."><i class="fas fa-expand-arrows-alt text-indigo-500 mr-1"></i> Bật Overcommit (Cấp lố)</span>
+                        <div class="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
+                            <input type="checkbox" name="toggle" id="overcommitToggle" onchange="toggleOvercommit()" class="toggle-checkbox absolute block w-5 h-5 rounded-full bg-white border-4 appearance-none cursor-pointer"/>
+                            <label for="overcommitToggle" class="toggle-label block overflow-hidden h-5 rounded-full bg-slate-300 cursor-pointer"></label>
+                        </div>
+                    </div>
+                    <p class="text-[10px] text-slate-500 italic leading-tight mb-3">Nếu tắt, bạn không thể tạo thêm VM khi hết phần cứng. Nếu bật, bạn có thể tạo thêm nhưng rủi ro Host bị quá tải (Thrashing) nếu các VM cùng chạy nặng.</p>
+                    
+                    <div class="border-t border-slate-200 pt-3 mt-1">
+                        <span class="font-semibold text-slate-700 block mb-2"><i class="fas fa-shield-alt text-red-500 mr-1"></i> Giả lập Sự cố An ninh</span>
+                        <button onclick="toggleDDoS()" id="btnDDoS" class="w-full bg-slate-800 hover:bg-slate-900 text-red-400 border border-red-900 font-bold py-1.5 px-3 rounded shadow transition-colors text-xs flex justify-center items-center">
+                            <i class="fas fa-network-wired mr-2"></i> Tấn công DDoS vào Host
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Create VM Form -->
+            <div id="controlPanel" class="bg-white rounded-xl shadow-md p-5 border-t-4 border-indigo-500">
+                <h2 class="text-lg font-bold mb-4 text-slate-800"><i class="fas fa-plus-square text-indigo-600 mr-2"></i>Khởi tạo Guest OS (VM)</h2>
+                
+                <form id="createVmForm" onsubmit="handleCreateVM(event)">
+                    <div class="mb-3">
+                        <label class="block text-xs font-bold text-slate-700 mb-1">Tên Máy Ảo / Dịch vụ</label>
+                        <input type="text" id="vmName" required placeholder="VD: Web Server, Database..." class="w-full p-2 border rounded bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-400 outline-none text-sm">
+                    </div>
+                    
+                    <div class="grid grid-cols-3 gap-2 mb-4">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1" title="Số nhân ảo">vCPU</label>
+                            <input type="number" id="vmCpu" required min="1" max="16" value="2" class="w-full p-2 border rounded bg-slate-50 text-sm focus:ring-2 focus:ring-indigo-400 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1" title="RAM ảo (GB)">vRAM (GB)</label>
+                            <input type="number" id="vmRam" required min="1" max="32" value="4" class="w-full p-2 border rounded bg-slate-50 text-sm focus:ring-2 focus:ring-indigo-400 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1" title="Ổ đĩa chiếm dụng thật">vDisk (GB)</label>
+                            <input type="number" id="vmDisk" required min="10" max="1000" step="10" value="50" class="w-full p-2 border rounded bg-slate-50 text-sm focus:ring-2 focus:ring-indigo-400 outline-none">
+                        </div>
+                    </div>
+
+                    <button type="submit" id="btnCreateVm" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded shadow transition-colors text-sm flex justify-center items-center">
+                        <i class="fas fa-magic mr-2"></i> Tạo & Khởi động
+                    </button>
+                </form>
+            </div>
+
+            <!-- Terminal / Logs -->
+            <div class="bg-slate-900 text-green-400 rounded-xl shadow-md p-4 font-mono text-[11px] h-60 overflow-y-auto flex-grow flex flex-col" id="systemLogs">
+                <div class="mb-2 text-slate-400 border-b border-slate-700 pb-1">root@hypervisor:~# tail -f /var/log/syslog</div>
+                <!-- Logs go here -->
+            </div>
+        </div>
+
+        <!-- Right Column: VMs List -->
+        <div class="w-full lg:w-2/3 bg-white rounded-xl shadow-md p-5 border-t-4 border-slate-300 flex flex-col">
+            <div class="flex justify-between items-end mb-4 border-b pb-3">
+                <div>
+                    <h2 class="text-xl font-bold text-slate-800 flex items-center">
+                        <i class="fas fa-layer-group text-slate-500 mr-2"></i> Quản lý Máy Ảo (Guest OS)
+                    </h2>
+                    <p class="text-xs text-slate-500 mt-1">Các VM hoạt động độc lập (Isolated). Chú ý tài nguyên thực dùng so với được cấp phát.</p>
+                </div>
+                <div class="text-xs font-semibold text-slate-600 bg-slate-100 px-3 py-1 rounded-full border">
+                    Tổng VM: <span id="vmCountBadge" class="text-blue-600">0</span>
+                </div>
+            </div>
+            
+            <div id="vmContainer" class="grid grid-cols-1 md:grid-cols-2 gap-4 overflow-y-auto pr-2 pb-2">
+                <!-- Vms will be injected here -->
+                <div id="emptyVmState" class="col-span-full flex flex-col items-center justify-center py-16 text-slate-400">
+                    <i class="fas fa-box-open text-5xl mb-4 opacity-50"></i>
+                    <p class="text-lg font-medium">Chưa có máy ảo nào</p>
+                    <p class="text-sm mt-1">Sử dụng bảng bên trái để khởi tạo Guest OS.</p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Modal Notifications -->
+    <div id="modal" class="fixed inset-0 bg-slate-900 bg-opacity-75 hidden flex items-center justify-center z-[100] backdrop-blur-sm transition-opacity">
+        <div class="bg-white p-6 rounded-xl shadow-2xl max-w-md w-full transform transition-all scale-95 opacity-0" id="modalContent">
+            <div class="text-center">
+                <i id="modalIcon" class="fas fa-exclamation-triangle text-red-500 text-5xl mb-4"></i>
+                <h3 class="text-xl font-bold text-slate-900 mb-2" id="modalTitle">Tiêu đề</h3>
+                <p class="text-slate-600 mb-6 text-sm" id="modalMessage">Nội dung</p>
+                <button onclick="closeModal()" class="bg-slate-800 hover:bg-slate-900 text-white font-bold py-2 px-6 rounded-lg shadow w-full transition-colors">Đóng</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- CONSTANTS & STATE ---
+        const PHYSICAL_HOST = { cpu: 16, ram: 32, disk: 1000 };
+        let state = {
+            allocated: { cpu: 0, ram: 0, disk: 0 }, // What is promised
+            actualUsage: { cpu: 0, ram: 0 },        // What is currently running
+            vms: [],
+            hostStatus: 'running', // running, overloaded, crashed
+            overcommitEnabled: false,
+            simRunning: true,
+            isUnderAttack: false,
+            vmIdCounter: 0
+        };
+        let simInterval;
+
+        // --- DOM ELEMENTS ---
+        const els = {
+            hostCpuBar: document.getElementById('hostCpuBar'),
+            hostRamBar: document.getElementById('hostRamBar'),
+            hostDiskBar: document.getElementById('hostDiskBar'),
+            hostCpuAllocMarker: document.getElementById('hostCpuAllocatedMarker'),
+            hostRamAllocMarker: document.getElementById('hostRamAllocatedMarker'),
+            hostCpuText: document.getElementById('hostCpuText'),
+            hostRamText: document.getElementById('hostRamText'),
+            hostDiskText: document.getElementById('hostDiskText'),
+            hostCpuAllocText: document.getElementById('hostCpuAllocText'),
+            hostRamAllocText: document.getElementById('hostRamAllocText'),
+            hostStatusBadge: document.getElementById('hostStatusBadge'),
+            hostPanel: document.getElementById('hostPanel'),
+            vmContainer: document.getElementById('vmContainer'),
+            emptyVmState: document.getElementById('emptyVmState'),
+            systemLogs: document.getElementById('systemLogs'),
+            vmCountBadge: document.getElementById('vmCountBadge'),
+            btnSimToggle: document.getElementById('btnSimToggle'),
+            simIcon: document.getElementById('simIcon'),
+            simText: document.getElementById('simText'),
+            btnDDoS: document.getElementById('btnDDoS')
+        };
+
+        // --- CORE LOGIC & SIMULATION ---
+
+        function init() {
+            logSys("Khởi động Máy chủ Vật lý (Host OS/Hypervisor)... OK");
+            logSys(`Phát hiện phần cứng: ${PHYSICAL_HOST.cpu} Core, ${PHYSICAL_HOST.ram}GB RAM, ${PHYSICAL_HOST.disk}GB SSD`);
+            updateHostUI();
+            startSimulation();
+        }
+
+        function logSys(msg, type = 'info') {
+            const time = new Date().toLocaleTimeString([], { hour12: false });
+            const div = document.createElement('div');
+            let color = 'text-green-400';
+            let prefix = '[INFO]';
+            if (type === 'error') { color = 'text-red-400 font-bold'; prefix = '[FATAL]'; }
+            if (type === 'warn') { color = 'text-yellow-400'; prefix = '[WARN]'; }
+            if (type === 'action') { color = 'text-blue-300'; prefix = '[EXEC]'; }
+            if (type === 'attack') { color = 'text-red-500 font-bold bg-red-900 bg-opacity-30 px-1 mt-1 rounded'; prefix = '[ATTACK]'; }
+            
+            div.className = `mb-1 ${color}`;
+            div.innerText = `${time} ${prefix} ${msg}`;
+            els.systemLogs.appendChild(div);
+            els.systemLogs.scrollTop = els.systemLogs.scrollHeight;
+        }
+
+        function toggleDDoS() {
+            if (state.hostStatus === 'crashed') return;
+            
+            state.isUnderAttack = !state.isUnderAttack;
+            if (state.isUnderAttack) {
+                els.btnDDoS.innerHTML = '<i class="fas fa-shield-virus mr-2"></i> Ngừng Tấn công DDoS';
+                els.btnDDoS.className = "w-full bg-red-700 hover:bg-red-800 text-white font-bold py-1.5 px-3 rounded shadow transition-colors text-xs flex justify-center items-center animate-pulse";
+                logSys("PHÁT HIỆN TẤN CÔNG: Lưu lượng mạng rác (DDoS) đang nhắm trực tiếp vào Hypervisor!", 'attack');
+            } else {
+                els.btnDDoS.innerHTML = '<i class="fas fa-network-wired mr-2"></i> Tấn công DDoS vào Host';
+                els.btnDDoS.className = "w-full bg-slate-800 hover:bg-slate-900 text-red-400 border border-red-900 font-bold py-1.5 px-3 rounded shadow transition-colors text-xs flex justify-center items-center";
+                logSys("Hệ thống phòng thủ đã chặn được luồng tấn công DDoS. Trạng thái dần khôi phục.", 'action');
+            }
+        }
+
+        function toggleOvercommit() {
+            state.overcommitEnabled = document.getElementById('overcommitToggle').checked;
+            logSys(`Đã ${state.overcommitEnabled ? 'BẬT' : 'TẮT'} tính năng Overcommit.`, 'warn');
+            if(!state.overcommitEnabled) {
+                // Check if current allocation already exceeds physical
+                if(state.allocated.cpu > PHYSICAL_HOST.cpu || state.allocated.ram > PHYSICAL_HOST.ram) {
+                    logSys("CẢNH BÁO: Đã cấp phát lố nhưng Overcommit bị tắt. Vui lòng xóa bớt VM để tránh lỗi cấp phát mới.", 'warn');
+                }
+            }
+            updateHostUI();
+        }
+
+        function handleCreateVM(e) {
+            e.preventDefault();
+            if (state.hostStatus === 'crashed') {
+                showModal("Lỗi Hệ Thống", "Máy chủ vật lý đang sập (Crashed). Không thể tương tác.", "error");
+                return;
+            }
+
+            const name = document.getElementById('vmName').value;
+            const cpu = parseInt(document.getElementById('vmCpu').value);
+            const ram = parseInt(document.getElementById('vmRam').value);
+            const disk = parseInt(document.getElementById('vmDisk').value);
+
+            // 1. Check Storage (Storage cannot be overcommitted in this simple model)
+            if (state.allocated.disk + disk > PHYSICAL_HOST.disk) {
+                showModal("Hết Ổ Cứng", `Phần cứng chỉ còn ${PHYSICAL_HOST.disk - state.allocated.disk}GB SSD. Không đủ để tạo VM.`, "error");
+                shakeElement(els.hostPanel);
+                return;
+            }
+
+            // 2. Check CPU/RAM with Overcommit logic
+            if (!state.overcommitEnabled) {
+                if (state.allocated.cpu + cpu > PHYSICAL_HOST.cpu || state.allocated.ram + ram > PHYSICAL_HOST.ram) {
+                    logSys(`Từ chối tạo VM '${name}': Thiếu CPU/RAM và Overcommit đang TẮT.`, 'error');
+                    showModal("Giới hạn Phần cứng (Overcommit Tắt)", `Không đủ tài nguyên thật.\nCần: ${cpu}vCPU, ${ram}GB RAM.\nTrống: ${Math.max(0, PHYSICAL_HOST.cpu - state.allocated.cpu)}vCPU, ${Math.max(0, PHYSICAL_HOST.ram - state.allocated.ram)}GB RAM.\nHãy bật Overcommit nếu muốn cấp phát lố.`, "warn");
+                    shakeElement(els.hostPanel);
+                    return;
+                }
+            } else {
+                if (state.allocated.cpu + cpu > PHYSICAL_HOST.cpu || state.allocated.ram + ram > PHYSICAL_HOST.ram) {
+                    logSys(`Đã cấp phát lố (Overprovisioned) CPU/RAM cho VM '${name}'. Rủi ro nghẽn cổ chai.`, 'warn');
+                }
+            }
+
+            // Create VM
+            state.vmIdCounter++;
+            const newVM = {
+                id: state.vmIdCounter,
+                name: name,
+                cpuAlloc: cpu,
+                ramAlloc: ram,
+                diskAlloc: disk,
+                cpuUsage: 0, // % of allocated
+                ramUsage: 0, // % of allocated
+                status: 'running', // running, stopped, crashed, paused
+                hasSnapshot: false,
+                snapshotData: null,
+                isStressed: false
+            };
+
+            state.vms.push(newVM);
+            
+            // Update Allocations
+            state.allocated.cpu += cpu;
+            state.allocated.ram += ram;
+            state.allocated.disk += disk;
+
+            logSys(`Khởi tạo thành công VM: ${name} (${cpu}vCPU, ${ram}GB RAM, ${disk}GB Disk)`, 'action');
+            
+            document.getElementById('vmName').value = ''; // clear
+            updateHostUI();
+            renderVMs();
+        }
+
+        // --- REAL-TIME SIMULATION ENGINE ---
+        function startSimulation() {
+            if(simInterval) clearInterval(simInterval);
+            simInterval = setInterval(simulationTick, 1500);
+            state.simRunning = true;
+            els.simIcon.className = "fas fa-pause mr-2";
+            els.simText.innerText = "Tạm dừng TG Thực";
+        }
+
+        function toggleSimulation() {
+            if(state.simRunning) {
+                clearInterval(simInterval);
+                state.simRunning = false;
+                els.simIcon.className = "fas fa-play mr-2";
+                els.simText.innerText = "Tiếp tục TG Thực";
+                logSys("Đã tạm dừng mô phỏng thời gian thực.");
+            } else {
+                startSimulation();
+                logSys("Tiếp tục mô phỏng thời gian thực.");
+            }
+        }
+
+        function simulationTick() {
+            if (state.hostStatus === 'crashed') return;
+
+            let totalActualCpu = 0;
+            let totalActualRam = 0;
+
+            // Fluctuate usage for running VMs
+            state.vms.forEach(vm => {
+                if (vm.status === 'running') {
+                    if (state.isUnderAttack) {
+                        // DDoS causes hypervisor and virtual switch to struggle, spiking VM CPU indirectly
+                        vm.cpuUsage = Math.min(100, vm.cpuUsage + 10 + Math.random() * 20);
+                    } else if (vm.isStressed) {
+                        // Stress test pushes usage to 95-100%
+                        vm.cpuUsage = 95 + Math.random() * 5;
+                        vm.ramUsage = 95 + Math.random() * 5;
+                    } else {
+                        // Normal fluctuation (idle to medium load: 5% - 40%)
+                        // Sometimes spikes
+                        let spike = Math.random() > 0.8 ? 30 : 0;
+                        vm.cpuUsage = Math.min(100, Math.max(2, vm.cpuUsage + (Math.random() * 20 - 10) + spike));
+                        vm.ramUsage = Math.min(100, Math.max(10, vm.ramUsage + (Math.random() * 10 - 5)));
+                    }
+
+                    // Calculate actual physical units consumed
+                    totalActualCpu += (vm.cpuUsage / 100) * vm.cpuAlloc;
+                    totalActualRam += (vm.ramUsage / 100) * vm.ramAlloc;
+                } else {
+                    vm.cpuUsage = 0;
+                    vm.ramUsage = 0;
+                }
+                
+                // Update DOM for this specific VM without full re-render
+                updateVmCardUI(vm);
+            });
+
+            // If under DDoS attack, add massive overhead to the Host's actual physical usage (Hypervisor networking stack overload)
+            if (state.isUnderAttack) {
+                totalActualCpu += PHYSICAL_HOST.cpu * 0.85; // 85% overhead just from network interrupts
+                totalActualRam += PHYSICAL_HOST.ram * 0.6; // Memory filling up with bogus connections
+            }
+
+            state.actualUsage.cpu = totalActualCpu;
+            state.actualUsage.ram = totalActualRam;
+
+            checkHostHealth();
+            updateHostUI();
+        }
+
+        function checkHostHealth() {
+            // Check if actual usage exceeds physical capacity (only happens if overcommit is heavily abused)
+            let cpuLoadPct = (state.actualUsage.cpu / PHYSICAL_HOST.cpu) * 100;
+            let ramLoadPct = (state.actualUsage.ram / PHYSICAL_HOST.ram) * 100;
+
+            if (cpuLoadPct > 100 || ramLoadPct > 100) {
+                // Thrashing / Overload
+                if (state.hostStatus !== 'overloaded') {
+                    state.hostStatus = 'overloaded';
+                    logSys("CẢNH BÁO NGUY HIỂM: Tài nguyên THỰC TẾ bị vắt kiệt do Overcommit! Hệ thống đang nghẽn nặng (Thrashing).", 'error');
+                    els.hostStatusBadge.className = "bg-orange-100 text-orange-800 text-xs font-bold px-2 py-1 rounded animate-pulse";
+                    els.hostStatusBadge.innerText = "NGHẼN (OVERLOAD)";
+                    document.body.classList.add('host-overload');
+                    
+                    // 10% chance to completely crash if overloaded
+                    if (Math.random() > 0.9) {
+                        crashHost();
+                    }
+                }
+            } else {
+                if (state.hostStatus === 'overloaded') {
+                    state.hostStatus = 'running';
+                    logSys("Hệ thống vật lý đã thoát khỏi trạng thái nghẽn, hoạt động bình thường trở lại.");
+                    els.hostStatusBadge.className = "bg-green-100 text-green-800 text-xs font-bold px-2 py-1 rounded";
+                    els.hostStatusBadge.innerText = "Bình thường";
+                    document.body.classList.remove('host-overload');
+                }
+            }
+        }
+
+        function crashHost() {
+            state.hostStatus = 'crashed';
+            document.body.classList.remove('host-overload');
+            document.body.classList.add('host-crashed');
+            els.hostStatusBadge.className = "bg-red-600 text-white text-xs font-bold px-2 py-1 rounded";
+            els.hostStatusBadge.innerText = "SẬP (CRASHED)";
+            
+            logSys("FATAL ERROR: Kernel Panic trên Hypervisor / Host mất nguồn!", 'error');
+            logSys("Toàn bộ máy ảo (Guest OS) bị mất kết nối và dừng đột ngột (Single Point of Failure).", 'error');
+
+            state.vms.forEach(vm => {
+                if(vm.status === 'running') vm.status = 'crashed_host';
+            });
+            renderVMs();
+        }
+
+        // --- UI UPDATES ---
+        function updateHostUI() {
+            // Allocated markers
+            let allocCpuPct = Math.min(100, (state.allocated.cpu / PHYSICAL_HOST.cpu) * 100);
+            let allocRamPct = Math.min(100, (state.allocated.ram / PHYSICAL_HOST.ram) * 100);
+            
+            els.hostCpuAllocMarker.style.left = `${allocCpuPct}%`;
+            els.hostRamAllocMarker.style.left = `${allocRamPct}%`;
+            els.hostCpuAllocText.innerText = `Cấp phát: ${state.allocated.cpu} vCPU (${allocCpuPct.toFixed(0)}%)`;
+            els.hostRamAllocText.innerText = `Cấp phát: ${state.allocated.ram} GB (${allocRamPct.toFixed(0)}%)`;
+
+            if (allocCpuPct >= 100 && state.overcommitEnabled) els.hostCpuAllocMarker.classList.replace('bg-red-500', 'bg-orange-500');
+            if (allocRamPct >= 100 && state.overcommitEnabled) els.hostRamAllocMarker.classList.replace('bg-red-500', 'bg-orange-500');
+
+            // Actual Usage Bars
+            let actualCpuPct = (state.actualUsage.cpu / PHYSICAL_HOST.cpu) * 100;
+            let actualRamPct = (state.actualUsage.ram / PHYSICAL_HOST.ram) * 100;
+            
+            // Visual clamping for bar width, but text shows real overflow
+            els.hostCpuBar.style.width = `${Math.min(100, actualCpuPct)}%`;
+            els.hostRamBar.style.width = `${Math.min(100, actualRamPct)}%`;
+            
+            els.hostCpuText.innerText = `${actualCpuPct.toFixed(1)}% (Thực dùng: ${state.actualUsage.cpu.toFixed(1)} Core)`;
+            els.hostRamText.innerText = `${actualRamPct.toFixed(1)}% (Thực dùng: ${state.actualUsage.ram.toFixed(1)} GB)`;
+
+            els.hostCpuBar.className = `h-3 rounded-full progress-bar absolute top-0 left-0 ${getColorByPct(actualCpuPct)}`;
+            els.hostRamBar.className = `h-3 rounded-full progress-bar absolute top-0 left-0 ${getColorByPct(actualRamPct)}`;
+
+            // Disk is static allocation
+            let diskPct = (state.allocated.disk / PHYSICAL_HOST.disk) * 100;
+            els.hostDiskBar.style.width = `${diskPct}%`;
+            els.hostDiskText.innerText = `${state.allocated.disk} / ${PHYSICAL_HOST.disk} GB`;
+            els.hostDiskBar.className = `h-3 rounded-full progress-bar ${getColorByPct(diskPct)}`;
+        }
+
+        function getColorByPct(pct) {
+            if (pct >= 95) return 'bg-red-600';
+            if (pct >= 75) return 'bg-orange-500';
+            if (pct >= 50) return 'bg-yellow-400';
+            return 'bg-blue-500';
+        }
+
+        // --- VM ACTIONS ---
+        function changeVmState(id, action) {
+            if (state.hostStatus === 'crashed') return;
+            const vm = state.vms.find(v => v.id === id);
+            if(!vm) return;
+
+            if (action === 'start') {
+                vm.status = 'running';
+                vm.isStressed = false;
+                logSys(`VM '${vm.name}' đã khởi động.`, 'action');
+            } else if (action === 'stop') {
+                vm.status = 'stopped';
+                vm.isStressed = false;
+                vm.cpuUsage = 0; vm.ramUsage = 0;
+                logSys(`VM '${vm.name}' đã tắt an toàn.`, 'action');
+            } else if (action === 'crash') {
+                vm.status = 'crashed';
+                vm.isStressed = false;
+                vm.cpuUsage = 0; vm.ramUsage = 0;
+                logSys(`LỖI CÔ LẬP: OS của VM '${vm.name}' bị sập (Kernel Panic). Host không bị ảnh hưởng.`, 'warn');
+            } else if (action === 'stress') {
+                vm.isStressed = !vm.isStressed;
+                logSys(`VM '${vm.name}': ${vm.isStressed ? 'BẬT' : 'TẮT'} Stress Test (Ép tải 100%).`, 'warn');
+            }
+
+            // Force recalculation immediately
+            simulationTick(); 
+            renderVMs();
+        }
+
+        function takeSnapshot(id) {
+            if (state.hostStatus === 'crashed') return;
+            const vm = state.vms.find(v => v.id === id);
+            if(!vm) return;
+
+            vm.hasSnapshot = true;
+            // Simulated snapshot size
+            const snapSize = Math.floor(vm.ramAlloc * (vm.ramUsage/100) + 5); 
+            
+            if (state.allocated.disk + snapSize > PHYSICAL_HOST.disk) {
+                showModal("Lỗi Snapshot", "Không đủ dung lượng ổ đĩa vật lý để lưu trạng thái Snapshot.", "error");
+                vm.hasSnapshot = false;
+                return;
+            }
+            
+            state.allocated.disk += snapSize;
+            vm.snapshotData = { size: snapSize, time: new Date().toLocaleTimeString() };
+            logSys(`Tạo Snapshot cho VM '${vm.name}' thành công (Chiếm ${snapSize}GB Disk).`, 'action');
+            
+            updateHostUI();
+            renderVMs();
+        }
+
+        function restoreSnapshot(id) {
+            if (state.hostStatus === 'crashed') return;
+            const vm = state.vms.find(v => v.id === id);
+            if(!vm || !vm.hasSnapshot) return;
+
+            vm.status = 'running'; // Restoring makes it running usually
+            vm.isStressed = false;
+            logSys(`Khôi phục VM '${vm.name}' về thời điểm ${vm.snapshotData.time}. Trạng thái đã ổn định.`, 'action');
+            
+            renderVMs();
+        }
+
+        function deleteVM(id) {
+            if (state.hostStatus === 'crashed') return;
+            const idx = state.vms.findIndex(v => v.id === id);
+            if (idx > -1) {
+                const vm = state.vms[idx];
+                
+                // Return resources
+                state.allocated.cpu -= vm.cpuAlloc;
+                state.allocated.ram -= vm.ramAlloc;
+                state.allocated.disk -= vm.diskAlloc;
+                if (vm.hasSnapshot) state.allocated.disk -= vm.snapshotData.size;
+
+                state.vms.splice(idx, 1);
+                logSys(`Xóa VM '${vm.name}'. Đã thu hồi ${vm.cpuAlloc}vCPU, ${vm.ramAlloc}GB RAM, và Disk.`, 'action');
+                
+                simulationTick(); // trigger immediate update
+                renderVMs();
+            }
+        }
+
+        // --- RENDER VMS ---
+        function renderVMs() {
+            els.vmCountBadge.innerText = state.vms.length;
+            
+            // Only re-render the whole list if count changed or major status change to avoid input focus loss,
+            // but for simplicity in this DOM model, we rewrite innerHTML. 
+            // The dynamic bars are handled by specific IDs later.
+            els.vmContainer.innerHTML = ''; 
+
+            if (state.vms.length === 0) {
+                els.vmContainer.appendChild(els.emptyVmState);
+                els.emptyVmState.style.display = 'flex';
+                return;
+            } else {
+                els.emptyVmState.style.display = 'none';
+            }
+
+            state.vms.forEach(vm => {
+                const card = document.createElement('div');
+                card.id = `vm-card-${vm.id}`;
+                
+                let sColor = 'bg-white border-slate-200';
+                let icon = '<i class="fas fa-play text-green-500"></i>';
+                let sBadge = '<span class="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded border border-green-200">Đang chạy</span>';
+                let overlay = '';
+
+                if (vm.status === 'stopped') {
+                    sColor = 'bg-slate-50 border-slate-300 opacity-80';
+                    icon = '<i class="fas fa-stop text-slate-400"></i>';
+                    sBadge = '<span class="text-[10px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded">Tắt</span>';
+                } else if (vm.status === 'crashed') {
+                    sColor = 'bg-red-50 border-red-300';
+                    icon = '<i class="fas fa-bug text-red-600"></i>';
+                    sBadge = '<span class="text-[10px] bg-red-100 text-red-700 px-2 py-0.5 rounded border border-red-200 animate-pulse">Lỗi OS</span>';
+                } else if (vm.status === 'crashed_host') {
+                    sColor = 'bg-slate-800 border-slate-700 text-slate-300';
+                    icon = '<i class="fas fa-skull text-slate-400"></i>';
+                    sBadge = '<span class="text-[10px] bg-slate-700 text-slate-300 px-2 py-0.5 rounded">Mất điện</span>';
+                    overlay = '<div class="absolute inset-0 bg-slate-900 bg-opacity-40 z-10"></div>';
+                }
+
+                if(vm.isStressed) {
+                    sColor = 'bg-orange-50 border-orange-400';
+                    sBadge += ' <span class="text-[10px] bg-orange-500 text-white px-2 py-0.5 rounded animate-pulse"><i class="fas fa-fire"></i> Stress</span>';
+                }
+
+                card.className = `vm-card-enter relative border rounded-lg shadow-sm p-4 ${sColor} flex flex-col transition-all duration-300 overflow-hidden`;
+                
+                card.innerHTML = `
+                    ${overlay}
+                    <div class="flex justify-between items-start mb-3 z-20 relative">
+                        <h3 class="font-bold text-sm text-slate-800 truncate pr-2" title="${vm.name}">${icon} ${vm.name}</h3>
+                        <div class="flex flex-col items-end gap-1">${sBadge}</div>
+                    </div>
+                    
+                    <div class="text-xs mb-3 space-y-2 z-20 relative flex-grow">
+                        <!-- VM CPU -->
+                        <div>
+                            <div class="flex justify-between mb-1 text-slate-600">
+                                <span>vCPU (${vm.cpuAlloc} Core)</span>
+                                <span id="vm-cpu-txt-${vm.id}">${vm.cpuUsage.toFixed(0)}%</span>
+                            </div>
+                            <div class="w-full bg-slate-200 rounded h-1.5 overflow-hidden">
+                                <div id="vm-cpu-bar-${vm.id}" class="h-1.5 bg-blue-500 progress-bar" style="width: ${vm.cpuUsage}%"></div>
+                            </div>
+                        </div>
+                        <!-- VM RAM -->
+                        <div>
+                            <div class="flex justify-between mb-1 text-slate-600">
+                                <span>vRAM (${vm.ramAlloc} GB)</span>
+                                <span id="vm-ram-txt-${vm.id}">${vm.ramUsage.toFixed(0)}%</span>
+                            </div>
+                            <div class="w-full bg-slate-200 rounded h-1.5 overflow-hidden">
+                                <div id="vm-ram-bar-${vm.id}" class="h-1.5 bg-green-500 progress-bar" style="width: ${vm.ramUsage}%"></div>
+                            </div>
+                        </div>
+                        <!-- Disk (Static) -->
+                        <div class="text-[10px] text-slate-500 pt-1 border-t border-slate-100 flex justify-between">
+                            <span><i class="fas fa-hdd"></i> vDisk: ${vm.diskAlloc} GB</span>
+                            ${vm.hasSnapshot ? `<span class="text-indigo-600 tooltip" title="Tạo lúc: ${vm.snapshotData.time}"><i class="fas fa-camera"></i> Snap (${vm.snapshotData.size}GB)</span>` : ''}
+                        </div>
+                    </div>
+                    
+                    <!-- Controls -->
+                    <div class="grid grid-cols-4 gap-1 mt-auto z-20 relative pt-2 border-t border-slate-100">
+                        ${getVmControls(vm)}
+                    </div>
+                `;
+                els.vmContainer.appendChild(card);
+            });
+        }
+
+        function getVmControls(vm) {
+            if (state.hostStatus === 'crashed') return `<button class="col-span-4 bg-slate-700 text-slate-400 text-xs py-1.5 rounded cursor-not-allowed">Offline</button>`;
+
+            let btns = '';
+            // Play/Stop
+            if (vm.status === 'running') {
+                btns += `<button onclick="changeVmState(${vm.id}, 'stop')" class="bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs py-1.5 rounded" title="Tắt máy"><i class="fas fa-power-off"></i></button>`;
+            } else {
+                btns += `<button onclick="changeVmState(${vm.id}, 'start')" class="bg-green-100 hover:bg-green-200 text-green-700 text-xs py-1.5 rounded" title="Khởi động"><i class="fas fa-play"></i></button>`;
+            }
+            
+            // Crash OS (Isolation demo)
+            btns += `<button onclick="changeVmState(${vm.id}, 'crash')" class="bg-red-100 hover:bg-red-200 text-red-700 text-xs py-1.5 rounded ${vm.status!=='running'?'opacity-50 cursor-not-allowed':''}" ${vm.status!=='running'?'disabled':''} title="Gây lỗi hệ điều hành ảo"><i class="fas fa-bug"></i></button>`;
+            
+            // Stress Test (Overload demo)
+            let stressColor = vm.isStressed ? 'bg-orange-500 text-white' : 'bg-orange-100 text-orange-700 hover:bg-orange-200';
+            btns += `<button onclick="changeVmState(${vm.id}, 'stress')" class="${stressColor} text-xs py-1.5 rounded ${vm.status!=='running'?'opacity-50 cursor-not-allowed':''}" ${vm.status!=='running'?'disabled':''} title="Đẩy CPU/RAM lên 100%"><i class="fas fa-fire"></i></button>`;
+            
+            // Snapshot Actions
+            if (vm.status === 'crashed' && vm.hasSnapshot) {
+                btns += `<button onclick="restoreSnapshot(${vm.id})" class="bg-indigo-100 hover:bg-indigo-200 text-indigo-700 text-xs py-1.5 rounded shadow-inner" title="Khôi phục Snapshot"><i class="fas fa-undo"></i></button>`;
+            } else if (vm.status === 'running' && !vm.hasSnapshot) {
+                btns += `<button onclick="takeSnapshot(${vm.id})" class="bg-indigo-50 hover:bg-indigo-100 text-indigo-600 text-xs py-1.5 rounded" title="Chụp trạng thái (Snapshot)"><i class="fas fa-camera"></i></button>`;
+            } else {
+                // Delete
+                btns += `<button onclick="deleteVM(${vm.id})" class="bg-slate-100 hover:bg-red-500 hover:text-white text-slate-500 text-xs py-1.5 rounded transition-colors" title="Xóa máy ảo"><i class="fas fa-trash"></i></button>`;
+            }
+
+            return btns;
+        }
+
+        // Fast update for simulation interval (avoid re-rendering entire card elements to prevent blinking)
+        function updateVmCardUI(vm) {
+            const cpuTxt = document.getElementById(`vm-cpu-txt-${vm.id}`);
+            const cpuBar = document.getElementById(`vm-cpu-bar-${vm.id}`);
+            const ramTxt = document.getElementById(`vm-ram-txt-${vm.id}`);
+            const ramBar = document.getElementById(`vm-ram-bar-${vm.id}`);
+
+            if (cpuTxt && cpuBar && ramTxt && ramBar) {
+                cpuTxt.innerText = `${vm.cpuUsage.toFixed(0)}%`;
+                cpuBar.style.width = `${vm.cpuUsage}%`;
+                cpuBar.className = `h-1.5 progress-bar ${getColorByPct(vm.cpuUsage)}`;
+
+                ramTxt.innerText = `${vm.ramUsage.toFixed(0)}%`;
+                ramBar.style.width = `${vm.ramUsage}%`;
+                ramBar.className = `h-1.5 progress-bar ${getColorByPct(vm.ramUsage)}`;
+            }
+        }
+
+        // --- UTILS ---
+        function resetSystem() {
+            if(!confirm("Bạn có chắc chắn muốn xóa toàn bộ máy ảo và khôi phục lại Host về trạng thái gốc?")) return;
+            
+            // 1. Dọn dẹp vòng lặp thời gian thực cũ
+            if (simInterval) clearInterval(simInterval);
+
+            // 2. Đặt lại toàn bộ State về mặc định nguyên bản
+            state = {
+                allocated: { cpu: 0, ram: 0, disk: 0 },
+                actualUsage: { cpu: 0, ram: 0 },
+                vms: [],
+                hostStatus: 'running',
+                overcommitEnabled: false,
+                simRunning: true,
+                isUnderAttack: false,
+                vmIdCounter: 0
+            };
+            
+            // 3. Khôi phục giao diện chung (Xóa màu nền đỏ/cam cảnh báo)
+            document.body.classList.remove('host-crashed', 'host-overload');
+            els.hostStatusBadge.className = "bg-green-100 text-green-800 text-xs font-bold px-2 py-1 rounded";
+            els.hostStatusBadge.innerText = "Bình thường";
+            els.systemLogs.innerHTML = '';
+            
+            // 4. Reset trạng thái các nút bấm & công tắc
+            if (els.btnDDoS) {
+                els.btnDDoS.innerHTML = '<i class="fas fa-network-wired mr-2"></i> Tấn công DDoS vào Host';
+                els.btnDDoS.className = "w-full bg-slate-800 hover:bg-slate-900 text-red-400 border border-red-900 font-bold py-1.5 px-3 rounded shadow transition-colors text-xs flex justify-center items-center";
+            }
+            
+            const toggle = document.getElementById('overcommitToggle');
+            if (toggle) toggle.checked = false;
+
+            els.simIcon.className = "fas fa-pause mr-2";
+            els.simText.innerText = "Tạm dừng TG Thực";
+
+            // 5. Reset lại các giá trị trong Form tạo VM
+            document.getElementById('vmName').value = '';
+            document.getElementById('vmCpu').value = '2';
+            document.getElementById('vmRam').value = '4';
+            document.getElementById('vmDisk').value = '50';
+
+            // 6. Ẩn modal (hộp thoại) nếu nó vô tình đang mở
+            document.getElementById('modal').classList.add('hidden');
+            
+            // 7. Khởi chạy lại từ đầu
+            init();
+            renderVMs();
+        }
+
+        function shakeElement(el) {
+            el.classList.add('shake');
+            setTimeout(() => el.classList.remove('shake'), 400);
+        }
+
+        function showModal(title, message, type="info") {
+            const modal = document.getElementById('modal');
+            const content = document.getElementById('modalContent');
+            const icon = document.getElementById('modalIcon');
+            
+            document.getElementById('modalTitle').innerText = title;
+            document.getElementById('modalMessage').innerText = message;
+            
+            if(type === 'error') {
+                icon.className = "fas fa-exclamation-circle text-red-500 text-5xl mb-4";
+            } else if (type === 'warn') {
+                icon.className = "fas fa-exclamation-triangle text-yellow-500 text-5xl mb-4";
+            } else {
+                icon.className = "fas fa-info-circle text-blue-500 text-5xl mb-4";
+            }
+
+            modal.classList.remove('hidden');
+            setTimeout(() => {
+                content.classList.remove('scale-95', 'opacity-0');
+                content.classList.add('scale-100', 'opacity-100');
+            }, 10);
+        }
+
+        function closeModal() {
+            const modal = document.getElementById('modal');
+            const content = document.getElementById('modalContent');
+            
+            content.classList.remove('scale-100', 'opacity-100');
+            content.classList.add('scale-95', 'opacity-0');
+            setTimeout(() => { modal.classList.add('hidden'); }, 300);
+        }
+
+        // START
+        init();
+
+    </script>
+</body>
+</html>

@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mô Phỏng Cáp Mạng & Kết Nối</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f3f4f6; }
+        .device-card { transition: all 0.2s ease; cursor: pointer; }
+        .device-card:hover { transform: translateY(-2px); box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); }
+        .selected { border-color: #3b82f6; background-color: #eff6ff; border-width: 2px; }
+        .pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
+        
+        /* Custom Scrollbar for console */
+        .console-scroll::-webkit-scrollbar { width: 6px; }
+        .console-scroll::-webkit-scrollbar-track { background: #1f2937; }
+        .console-scroll::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 4px; }
+    </style>
+</head>
+<body class="text-gray-800 h-screen flex flex-col">
+
+    <!-- Header -->
+    <header class="bg-blue-600 text-white p-4 shadow-md shrink-0">
+        <div class="container mx-auto flex justify-between items-center">
+            <div>
+                <h1 class="text-xl md:text-2xl font-bold"><i class="fa-solid fa-network-wired mr-2"></i>THE BÁO: Cáp Mạng & Cổng Kết Nối</h1>
+                <p class="text-sm text-blue-200 mt-1 hidden md:block">Thử nghiệm ghép nối thiết bị, chọn cáp và xem hậu quả khi thực thi sai cấu hình.</p>
+            </div>
+            <button onclick="resetSim()" class="bg-blue-500 hover:bg-blue-400 px-4 py-2 rounded text-sm font-semibold transition">
+                <i class="fa-solid fa-rotate-right mr-1"></i> Làm lại
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="container mx-auto p-4 flex-grow flex flex-col lg:flex-row gap-6 overflow-hidden">
+        
+        <!-- Left Panel: Configurations -->
+        <div class="w-full lg:w-2/3 flex flex-col gap-6 overflow-y-auto pr-2 pb-4">
+            
+            <!-- Step 1: Source -->
+            <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+                <h2 class="font-bold text-lg mb-3 flex items-center text-gray-700">
+                    <span class="bg-blue-100 text-blue-600 w-6 h-6 rounded-full inline-flex items-center justify-center mr-2 text-sm">1</span> 
+                    Thiết bị Nguồn (Cung cấp mạng)
+                </h2>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3" id="source-container">
+                    <!-- JS sẽ render vào đây -->
+                </div>
+            </div>
+
+            <!-- Step 2: Cable & Environment -->
+            <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+                <h2 class="font-bold text-lg mb-3 flex items-center text-gray-700">
+                    <span class="bg-blue-100 text-blue-600 w-6 h-6 rounded-full inline-flex items-center justify-center mr-2 text-sm">2</span> 
+                    Chọn Loại Cáp & Khoảng Cách
+                </h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4" id="cable-container">
+                    <!-- JS sẽ render vào đây -->
+                </div>
+                
+                <div class="mt-4 bg-gray-50 p-3 rounded-lg border border-gray-200">
+                    <label for="distance" class="block text-sm font-medium text-gray-700 mb-1">
+                        Khoảng cách triển khai: <span id="distance-val" class="text-blue-600 font-bold">50</span> mét
+                    </label>
+                    <input type="range" id="distance" min="1" max="500" value="50" class="w-full h-2 bg-gray-300 rounded-lg appearance-none cursor-pointer">
+                    <div class="flex justify-between text-xs text-gray-500 mt-1">
+                        <span>1m</span>
+                        <span>100m</span>
+                        <span>500m+</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 3: Destination -->
+            <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+                <h2 class="font-bold text-lg mb-3 flex items-center text-gray-700">
+                    <span class="bg-blue-100 text-blue-600 w-6 h-6 rounded-full inline-flex items-center justify-center mr-2 text-sm">3</span> 
+                    Thiết bị Đích (Nhận mạng)
+                </h2>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3" id="dest-container">
+                    <!-- JS sẽ render vào đây -->
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Right Panel: Simulation & Console -->
+        <div class="w-full lg:w-1/3 flex flex-col gap-4">
+            
+            <!-- Execution Button -->
+            <button onclick="runSimulation()" id="run-btn" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-4 rounded-xl shadow-lg transition text-lg flex items-center justify-center gap-2">
+                <i class="fa-solid fa-play"></i> Thực thi Kết nối
+            </button>
+
+            <!-- Visualizer -->
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex-grow flex flex-col items-center justify-center min-h-[200px]">
+                <h3 class="w-full text-left font-bold text-gray-700 mb-4 border-b pb-2">Sơ đồ Mô phỏng</h3>
+                
+                <div class="flex items-center justify-between w-full relative">
+                    <!-- Source Icon -->
+                    <div class="flex flex-col items-center z-10 w-24">
+                        <div id="vis-source-icon" class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center text-2xl text-gray-400 border-2 border-gray-200">
+                            <i class="fa-solid fa-question"></i>
+                        </div>
+                        <span id="vis-source-name" class="text-xs font-semibold text-center mt-2 text-gray-500">Chưa chọn</span>
+                    </div>
+
+                    <!-- Cable Line -->
+                    <div class="flex-grow flex flex-col items-center justify-center relative mx-2">
+                        <div id="vis-line" class="w-full h-2 bg-gray-200 rounded"></div>
+                        <div id="vis-status-icon" class="absolute bg-white rounded-full p-1 hidden">
+                            <!-- Icon sẽ được chèn bởi JS -->
+                        </div>
+                        <span id="vis-cable-name" class="text-xs text-gray-400 mt-1 absolute -bottom-5 w-max"></span>
+                    </div>
+
+                    <!-- Dest Icon -->
+                    <div class="flex flex-col items-center z-10 w-24">
+                        <div id="vis-dest-icon" class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center text-2xl text-gray-400 border-2 border-gray-200">
+                            <i class="fa-solid fa-question"></i>
+                        </div>
+                        <span id="vis-dest-name" class="text-xs font-semibold text-center mt-2 text-gray-500">Chưa chọn</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Console Log -->
+            <div class="bg-gray-900 rounded-xl shadow-sm border border-gray-800 flex flex-col h-64 shrink-0">
+                <div class="bg-gray-800 px-4 py-2 rounded-t-xl border-b border-gray-700 flex justify-between items-center">
+                    <span class="text-gray-300 font-mono text-sm"><i class="fa-solid fa-terminal mr-2"></i>System Console</span>
+                    <button onclick="clearConsole()" class="text-gray-500 hover:text-white text-xs"><i class="fa-solid fa-trash"></i></button>
+                </div>
+                <div id="console-output" class="p-4 overflow-y-auto console-scroll flex-grow font-mono text-sm flex flex-col gap-2">
+                    <div class="text-gray-400">>> Hệ thống sẵn sàng. Vui lòng chọn thiết bị và cấu hình cáp...</div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <script>
+        // --- DATA DEFINITIONS ---
+        const sources = [
+            { id: 's1', name: 'Switch Thường', icon: 'fa-network-wired', port: 'RJ45', hasPoE: false, desc: 'Cổng RJ45, không cấp nguồn' },
+            { id: 's2', name: 'Switch PoE', icon: 'fa-plug-circle-bolt', port: 'RJ45', hasPoE: true, desc: 'Cổng RJ45, cấp nguồn qua mạng' },
+            { id: 's3', name: 'Core Switch', icon: 'fa-server', port: 'SFP', hasPoE: false, desc: 'Cổng quang (SFP), tốc độ cao' }
+        ];
+
+        const cables = [
+            { id: 'c1', name: 'Cáp Đồng (Cat6)', icon: 'fa-ethernet', portType: 'RJ45', maxDist: 100, carriesPoE: true, color: '#3b82f6', desc: 'Tối đa 100m, hỗ trợ PoE' },
+            { id: 'c2', name: 'Cáp Quang (Fiber)', icon: 'fa-bolt', portType: 'SFP', maxDist: 10000, carriesPoE: false, color: '#eab308', desc: 'Chạy xa hàng km, KHÔNG PoE' }
+        ];
+
+        const destinations = [
+            { id: 'd1', name: 'Máy Tính (PC)', icon: 'fa-desktop', port: 'RJ45', needsPoE: false, desc: 'Cổng mạng RJ45 tiêu chuẩn' },
+            { id: 'd2', name: 'Camera IP', icon: 'fa-video', port: 'RJ45', needsPoE: true, desc: 'Cổng RJ45, cần nguồn PoE để chạy' },
+            { id: 'd3', name: 'Máy Chủ (Server)', icon: 'fa-database', port: 'SFP', needsPoE: false, desc: 'Giao tiếp qua cổng quang SFP' }
+        ];
+
+        // --- STATE ---
+        let state = {
+            sourceId: null,
+            cableId: null,
+            destId: null,
+            distance: 50
+        };
+
+        // --- DOM ELEMENTS ---
+        const els = {
+            sourceContainer: document.getElementById('source-container'),
+            cableContainer: document.getElementById('cable-container'),
+            destContainer: document.getElementById('dest-container'),
+            distanceInput: document.getElementById('distance'),
+            distanceVal: document.getElementById('distance-val'),
+            consoleOut: document.getElementById('console-output'),
+            // Vis elements
+            visSourceIcon: document.getElementById('vis-source-icon'),
+            visSourceName: document.getElementById('vis-source-name'),
+            visDestIcon: document.getElementById('vis-dest-icon'),
+            visDestName: document.getElementById('vis-dest-name'),
+            visLine: document.getElementById('vis-line'),
+            visCableName: document.getElementById('vis-cable-name'),
+            visStatusIcon: document.getElementById('vis-status-icon')
+        };
+
+        // --- INITIALIZATION ---
+        function init() {
+            renderCards(sources, els.sourceContainer, 'sourceId');
+            renderCards(cables, els.cableContainer, 'cableId');
+            renderCards(destinations, els.destContainer, 'destId');
+            
+            els.distanceInput.addEventListener('input', (e) => {
+                state.distance = parseInt(e.target.value);
+                els.distanceVal.innerText = state.distance;
+                updateVisualizer();
+            });
+        }
+
+        // --- RENDER FUNCTIONS ---
+        function renderCards(dataArray, container, stateKey) {
+            container.innerHTML = '';
+            dataArray.forEach(item => {
+                const isSelected = state[stateKey] === item.id;
+                const card = document.createElement('div');
+                card.className = `device-card border rounded-lg p-3 flex flex-col items-center text-center bg-white ${isSelected ? 'selected' : 'border-gray-200'}`;
+                card.onclick = () => selectItem(stateKey, item.id);
+                
+                card.innerHTML = `
+                    <div class="text-3xl mb-2 ${isSelected ? 'text-blue-600' : 'text-gray-600'}">
+                        <i class="fa-solid ${item.icon}"></i>
+                    </div>
+                    <div class="font-semibold text-sm mb-1 text-gray-800">${item.name}</div>
+                    <div class="text-xs text-gray-500">${item.desc}</div>
+                    ${item.port ? `<div class="mt-2 text-xs font-mono bg-gray-100 px-2 py-1 rounded">Cổng: ${item.port}</div>` : ''}
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function selectItem(stateKey, id) {
+            state[stateKey] = id;
+            // Re-render to update UI
+            if(stateKey === 'sourceId') renderCards(sources, els.sourceContainer, 'sourceId');
+            if(stateKey === 'cableId') renderCards(cables, els.cableContainer, 'cableId');
+            if(stateKey === 'destId') renderCards(destinations, els.destContainer, 'destId');
+            
+            updateVisualizer();
+        }
+
+        function updateVisualizer() {
+            // Update Source
+            const src = sources.find(s => s.id === state.sourceId);
+            if (src) {
+                els.visSourceIcon.innerHTML = `<i class="fa-solid ${src.icon}"></i>`;
+                els.visSourceIcon.className = "w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center text-2xl text-blue-600 border-2 border-blue-400";
+                els.visSourceName.innerText = src.name;
+            }
+
+            // Update Dest
+            const dst = destinations.find(d => d.id === state.destId);
+            if (dst) {
+                els.visDestIcon.innerHTML = `<i class="fa-solid ${dst.icon}"></i>`;
+                els.visDestIcon.className = "w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center text-2xl text-blue-600 border-2 border-blue-400";
+                els.visDestName.innerText = dst.name;
+            }
+
+            // Update Cable
+            const cbl = cables.find(c => c.id === state.cableId);
+            if (cbl) {
+                els.visLine.style.backgroundColor = cbl.color;
+                els.visLine.style.height = cbl.id === 'c1' ? '4px' : '2px'; // Quang mỏng hơn đồng
+                els.visCableName.innerText = `${cbl.name} (${state.distance}m)`;
+            } else {
+                els.visLine.style.backgroundColor = '#e5e7eb'; // default gray
+                els.visCableName.innerText = '';
+            }
+
+            // Reset status
+            els.visStatusIcon.classList.add('hidden');
+            els.visLine.classList.remove('pulse');
+        }
+
+        // --- SIMULATION LOGIC ---
+        function runSimulation() {
+            const src = sources.find(s => s.id === state.sourceId);
+            const cbl = cables.find(c => c.id === state.cableId);
+            const dst = destinations.find(d => d.id === state.destId);
+            const dist = state.distance;
+
+            // 1. Check if all selected
+            if (!src || !cbl || !dst) {
+                logConsole('LỖI', 'Vui lòng chọn đầy đủ Thiết bị nguồn, Cáp và Thiết bị đích.', 'error');
+                return;
+            }
+
+            logConsole('INFO', `Đang kiểm tra kết nối: [${src.name}] <---> [${dst.name}] qua [${cbl.name}] dài ${dist}m...`, 'info');
+
+            // 2. Tương thích cổng Nguồn -> Cáp
+            if (src.port !== cbl.portType) {
+                failSim(`KHÔNG TƯƠNG THÍCH CỔNG NGUỒN: Bạn đang cố cắm đầu nối ${cbl.portType} của ${cbl.name} vào cổng ${src.port} của ${src.name}. Về mặt vật lý không thể cắm vừa!`);
+                return;
+            }
+
+            // 3. Tương thích cổng Cáp -> Đích
+            if (dst.port !== cbl.portType) {
+                failSim(`KHÔNG TƯƠNG THÍCH CỔNG ĐÍCH: Bạn đang cố cắm đầu nối ${cbl.portType} của ${cbl.name} vào cổng ${dst.port} của ${dst.name}. Về mặt vật lý không thể cắm vừa!`);
+                return;
+            }
+
+            // 4. Giới hạn khoảng cách
+            if (dist > cbl.maxDist) {
+                failSim(`SUY HAO TÍN HIỆU: ${cbl.name} chỉ hỗ trợ truyền tải dữ liệu ổn định ở khoảng cách tối đa ${cbl.maxDist}m. Với khoảng cách ${dist}m, tín hiệu sẽ bị mất hoặc thiết bị không nhận nhau.`);
+                return;
+            }
+
+            // 5. Kiểm tra cấp nguồn (PoE)
+            if (dst.needsPoE) {
+                if (!src.hasPoE) {
+                    warnSim(`LỖI NGUỒN ĐIỆN: ${dst.name} cần nguồn PoE để hoạt động. ${src.name} là Switch thường không cấp được nguồn. Cắm vào thiết bị sẽ không lên đèn!`);
+                    return;
+                }
+                if (!cbl.carriesPoE) {
+                    warnSim(`LỖI TRUYỀN TẢI NGUỒN: ${src.name} có PoE và ${dst.name} cần PoE, nhưng ${cbl.name} (Sợi thủy tinh) KHÔNG THỂ dẫn điện. Thiết bị sẽ không hoạt động!`);
+                    return;
+                }
+                // Nếu camera + switch poe + cáp đồng nhưng khoảng cách quá xa (thực tế PoE chuẩn thường hụt áp nếu > 100m, nhưng ở trên đã check maxDist cáp đồng = 100m rồi)
+            }
+
+            // NẾU VƯỢT QUA TẤT CẢ -> THÀNH CÔNG
+            successSim(`KẾT NỐI THÀNH CÔNG! Dữ liệu ${dst.needsPoE ? 'và Nguồn điện (PoE) ' : ''}được truyền tải ổn định giữa ${src.name} và ${dst.name}.`);
+        }
+
+        // --- VISUAL FEEDBACK & CONSOLE LOGGING ---
+        function failSim(msg) {
+            logConsole('THẤT BẠI', msg, 'error');
+            els.visLine.style.backgroundColor = '#ef4444'; // Red
+            els.visStatusIcon.innerHTML = '<i class="fa-solid fa-xmark text-red-500 text-xl"></i>';
+            els.visStatusIcon.classList.remove('hidden');
+        }
+
+        function warnSim(msg) {
+            logConsole('CẢNH BÁO', msg, 'warning');
+            els.visLine.style.backgroundColor = '#f59e0b'; // Yellow
+            els.visStatusIcon.innerHTML = '<i class="fa-solid fa-triangle-exclamation text-yellow-500 text-xl"></i>';
+            els.visStatusIcon.classList.remove('hidden');
+        }
+
+        function successSim(msg) {
+            logConsole('THÀNH CÔNG', msg, 'success');
+            els.visLine.style.backgroundColor = '#10b981'; // Green
+            els.visLine.classList.add('pulse');
+            els.visStatusIcon.innerHTML = '<i class="fa-solid fa-check text-green-500 text-xl"></i>';
+            els.visStatusIcon.classList.remove('hidden');
+        }
+
+        function logConsole(type, message, level = 'info') {
+            const colors = {
+                'info': 'text-blue-400',
+                'error': 'text-red-400',
+                'warning': 'text-yellow-400',
+                'success': 'text-green-400'
+            };
+            
+            const time = new Date().toLocaleTimeString('vi-VN');
+            const entry = document.createElement('div');
+            entry.innerHTML = `<span class="text-gray-500">[${time}]</span> <span class="font-bold ${colors[level]}">[${type}]</span> <span class="text-gray-200">${message}</span>`;
+            
+            els.consoleOut.appendChild(entry);
+            els.consoleOut.scrollTop = els.consoleOut.scrollHeight; // Auto scroll to bottom
+        }
+
+        function clearConsole() {
+            els.consoleOut.innerHTML = '<div class="text-gray-400">>> Hệ thống sẵn sàng. Vui lòng chọn thiết bị và cấu hình cáp...</div>';
+        }
+
+        function resetSim() {
+            state = { sourceId: null, cableId: null, destId: null, distance: 50 };
+            els.distanceInput.value = 50;
+            els.distanceVal.innerText = 50;
+            init();
+            updateVisualizer();
+            clearConsole();
+            
+            // Reset default visualizer
+            els.visSourceIcon.innerHTML = '<i class="fa-solid fa-question"></i>';
+            els.visSourceIcon.className = "w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center text-2xl text-gray-400 border-2 border-gray-200";
+            els.visSourceName.innerText = "Chưa chọn";
+            
+            els.visDestIcon.innerHTML = '<i class="fa-solid fa-question"></i>';
+            els.visDestIcon.className = "w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center text-2xl text-gray-400 border-2 border-gray-200";
+            els.visDestName.innerText = "Chưa chọn";
+        }
+
+        // Khởi động khi load trang
+        window.onload = init;
+
+    </script>
+</body>
+</html>

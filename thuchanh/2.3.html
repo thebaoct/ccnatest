@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mô Phỏng LACP - EtherChannel</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        /* Custom Animations for Network Traffic */
+        @keyframes flow {
+            0% { background-position: 0 0; }
+            100% { background-position: -50px 0; }
+        }
+        
+        .link-active {
+            background-image: repeating-linear-gradient(90deg, #10b981 0, #10b981 10px, #34d399 10px, #34d399 20px);
+            animation: flow 1s linear infinite;
+        }
+
+        .link-blocked {
+            background-color: #f59e0b; /* Orange - STP Blocked */
+            opacity: 0.5;
+        }
+
+        .link-error {
+            background-color: #ef4444; /* Red - Err-Disable */
+            background-image: repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(0,0,0,0.1) 10px, rgba(0,0,0,0.1) 20px);
+        }
+
+        .etherchannel-box {
+            transition: all 0.5s ease;
+        }
+        
+        .bundled {
+            border: 4px dashed #10b981;
+            background-color: rgba(16, 185, 129, 0.1);
+            border-radius: 8px;
+        }
+        
+        /* --- MỚI THÊM: Animation cho gói tin (packets) --- */
+        .packet-flow {
+            background-image: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.8) 50%, rgba(255,255,255,0) 100%);
+            background-size: 50% 100%;
+            animation: flow-fast 0.8s linear infinite;
+        }
+        @keyframes flow-fast {
+            0% { background-position: -100% 0; }
+            100% { background-position: 200% 0; }
+        }
+        .cable-bg {
+            background-color: #334155; /* slate-700 */
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.5);
+        }
+        .status-icon {
+            text-shadow: 0 0 5px rgba(0,0,0,0.8);
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-200 min-h-screen font-sans">
+
+    <!-- Header -->
+    <header class="bg-slate-800 border-b border-slate-700 p-4 shadow-md">
+        <div class="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
+            <div>
+                <h1 class="text-2xl font-bold text-blue-400"><i class="fas fa-network-wired mr-2"></i>THE BÁO: 2.3 Mô Phỏng EtherChannel (LACP)</h1>
+                <p class="text-sm text-slate-400 mt-1">Phần 2: Truy cập mạng - Gom nhóm đường truyền ở Layer 2</p>
+            </div>
+            <button onclick="showTheory()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-md transition text-sm font-semibold">
+                <i class="fas fa-book-open mr-2"></i>Lý Thuyết Cơ Bản
+            </button>
+        </div>
+    </header>
+
+    <main class="max-w-6xl mx-auto p-4 mt-6">
+        
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            <!-- Left/Top Panel: Controls -->
+            <div class="lg:col-span-1 bg-slate-800 rounded-xl p-5 shadow-lg border border-slate-700">
+                <h2 class="text-xl font-bold mb-4 text-white border-b border-slate-700 pb-2">Cấu Hình Thiết Bị</h2>
+                
+                <!-- Switch A Settings -->
+                <div class="mb-6">
+                    <label class="block text-blue-400 font-semibold mb-2"><i class="fas fa-server mr-2"></i>Switch A (Core)</label>
+                    <select id="modeA" class="w-full bg-slate-700 border border-slate-600 text-white rounded-md p-2 focus:outline-none focus:border-blue-500">
+                        <option value="unconfigured">Chưa cấu hình (Độc lập)</option>
+                        <option value="active" selected>LACP Active (Chủ động)</option>
+                        <option value="passive">LACP Passive (Bị động)</option>
+                        <option value="on">On (Ép buộc, không LACP)</option>
+                    </select>
+                </div>
+
+                <!-- Switch B Settings -->
+                <div class="mb-6">
+                    <label class="block text-purple-400 font-semibold mb-2"><i class="fas fa-server mr-2"></i>Switch B (Access)</label>
+                    <select id="modeB" class="w-full bg-slate-700 border border-slate-600 text-white rounded-md p-2 focus:outline-none focus:border-purple-500">
+                        <option value="unconfigured">Chưa cấu hình (Độc lập)</option>
+                        <option value="active">LACP Active (Chủ động)</option>
+                        <option value="passive" selected>LACP Passive (Bị động)</option>
+                        <option value="on">On (Ép buộc, không LACP)</option>
+                    </select>
+                </div>
+
+                <button onclick="runSimulation()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 px-4 rounded-md shadow-lg transition duration-200 transform hover:scale-[1.02]">
+                    <i class="fas fa-play mr-2"></i>Thực Thi Lệnh (Áp Dụng)
+                </button>
+            </div>
+
+            <!-- Right/Bottom Panel: Visualization & Console -->
+            <div class="lg:col-span-2 flex flex-col gap-6">
+                
+                <!-- Topology Visualizer -->
+                <div class="bg-slate-800 rounded-xl p-6 shadow-lg border border-slate-700 relative overflow-hidden flex flex-col items-center justify-center min-h-[300px]">
+                    <h3 class="absolute top-4 left-4 text-sm font-semibold text-slate-400 uppercase tracking-wider">Sơ đồ mạng vật lý</h3>
+                    
+                    <!-- MỚI THÊM: Băng thông -->
+                    <div class="absolute top-4 right-4 bg-slate-900 border border-slate-600 px-4 py-2 rounded-lg text-center shadow-lg">
+                        <span class="text-xs text-slate-400 block uppercase">Tổng Băng Thông</span>
+                        <span id="bandwidthValue" class="text-xl font-bold text-slate-300">-- Gbps</span>
+                    </div>
+
+                    <div class="flex flex-row items-center justify-between w-full max-w-2xl mt-8">
+                        
+                        <!-- Switch A -->
+                        <div class="flex flex-col items-center z-10">
+                            <div class="w-20 h-24 bg-blue-900 border-2 border-blue-500 rounded-md flex items-center justify-center shadow-[0_0_15px_rgba(59,130,246,0.5)]">
+                                <i class="fas fa-network-wired text-3xl text-blue-300"></i>
+                            </div>
+                            <span class="mt-2 font-bold text-blue-400">Switch A</span>
+                            <span id="labelA" class="text-xs text-slate-400 bg-slate-700 px-2 py-1 rounded mt-1">Active</span>
+                        </div>
+
+                        <!-- The Cables (EtherChannel Group) -->
+                        <div id="channelGroup" class="flex-1 mx-4 p-4 etherchannel-box flex flex-col gap-6 relative justify-center h-48">
+                            
+                            <!-- Link 1 -->
+                            <div class="relative w-full h-4 rounded-full cable-bg overflow-hidden border border-slate-600">
+                                <div id="link1" class="absolute w-full h-full transition-all duration-500"></div>
+                                <div id="flow1" class="absolute w-full h-full hidden packet-flow"></div>
+                                <span id="icon1" class="status-icon absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-sm hidden"></span>
+                            </div>
+                            <span id="status1" class="absolute top-[15%] left-1/2 transform -translate-x-1/2 text-[10px] bg-slate-900 px-1 rounded text-slate-300 z-10">Link 1</span>
+                            
+                            <!-- Link 2 -->
+                            <div class="relative w-full h-4 rounded-full cable-bg overflow-hidden border border-slate-600">
+                                <div id="link2" class="absolute w-full h-full transition-all duration-500"></div>
+                                <div id="flow2" class="absolute w-full h-full hidden packet-flow"></div>
+                                <span id="icon2" class="status-icon absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-sm hidden"></span>
+                            </div>
+                            <span id="status2" class="absolute top-[50%] left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-[10px] bg-slate-900 px-1 rounded text-slate-300 z-10">Link 2</span>
+
+                            <!-- Link 3 -->
+                            <div class="relative w-full h-4 rounded-full cable-bg overflow-hidden border border-slate-600">
+                                <div id="link3" class="absolute w-full h-full transition-all duration-500"></div>
+                                <div id="flow3" class="absolute w-full h-full hidden packet-flow"></div>
+                                <span id="icon3" class="status-icon absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-sm hidden"></span>
+                            </div>
+                            <span id="status3" class="absolute bottom-[15%] left-1/2 transform -translate-x-1/2 text-[10px] bg-slate-900 px-1 rounded text-slate-300 z-10">Link 3</span>
+
+                            <!-- Logical Channel Label -->
+                            <div id="logicalLabel" class="hidden absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-emerald-900 border-2 border-emerald-400 text-emerald-100 px-4 py-2 rounded-lg text-sm font-bold shadow-[0_0_15px_rgba(16,185,129,0.5)] z-20 whitespace-nowrap">
+                                <i class="fas fa-link mr-2"></i>Ống Gộp: Port-Channel (Po1)
+                            </div>
+
+                        </div>
+
+                        <!-- Switch B -->
+                        <div class="flex flex-col items-center z-10">
+                            <div class="w-20 h-24 bg-purple-900 border-2 border-purple-500 rounded-md flex items-center justify-center shadow-[0_0_15px_rgba(168,85,247,0.5)]">
+                                <i class="fas fa-network-wired text-3xl text-purple-300"></i>
+                            </div>
+                            <span class="mt-2 font-bold text-purple-400">Switch B</span>
+                            <span id="labelB" class="text-xs text-slate-400 bg-slate-700 px-2 py-1 rounded mt-1">Passive</span>
+                        </div>
+
+                    </div>
+                </div>
+
+                <!-- Console / System Output -->
+                <div class="bg-black rounded-xl p-4 shadow-lg border border-slate-700 font-mono text-sm h-full min-h-[200px] flex flex-col">
+                    <div class="flex justify-between items-center border-b border-slate-800 pb-2 mb-3">
+                        <span class="text-slate-400">Syslog / Kết quả phân tích</span>
+                        <span class="flex space-x-2">
+                            <span class="w-3 h-3 rounded-full bg-red-500"></span>
+                            <span class="w-3 h-3 rounded-full bg-yellow-500"></span>
+                            <span class="w-3 h-3 rounded-full bg-green-500"></span>
+                        </span>
+                    </div>
+                    <div id="consoleOutput" class="flex-1 overflow-y-auto space-y-2 text-slate-300">
+                        <div class="text-blue-400">> Hệ thống đã sẵn sàng.</div>
+                        <div class="text-slate-500">> Hãy chọn cấu hình cho Switch A và B, sau đó nhấn "Thực Thi Lệnh".</div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Theory Modal (Hidden by default) -->
+    <div id="theoryModal" class="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 hidden p-4">
+        <div class="bg-slate-800 border border-slate-600 rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div class="p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-2xl font-bold text-blue-400">Lý Thuyết LACP (EtherChannel)</h2>
+                    <button onclick="closeTheory()" class="text-slate-400 hover:text-white"><i class="fas fa-times text-xl"></i></button>
+                </div>
+                <div class="space-y-4 text-slate-300 leading-relaxed">
+                    <p><strong>EtherChannel</strong> là công nghệ gom nhóm nhiều cổng vật lý (tối đa 8 cổng) thành một cổng logic duy nhất (Port-Channel).</p>
+                    <ul class="list-disc pl-5 space-y-2">
+                        <li><strong>Tăng băng thông:</strong> Gom 3 cổng 1Gbps sẽ tạo ra liên kết 3Gbps.</li>
+                        <li><strong>Dự phòng (Redundancy):</strong> Nếu 1 dây cáp đứt, lưu lượng tự động chuyển sang các dây còn lại mà không làm rớt mạng.</li>
+                        <li><strong>Đánh lừa STP:</strong> Spanning Tree Protocol nhìn EtherChannel như 1 cổng duy nhất, nên nó không block các đường dây bị gom.</li>
+                    </ul>
+                    <hr class="border-slate-600 my-4">
+                    <h3 class="text-lg font-semibold text-white">Các Mode của LACP (Chuẩn IEEE 802.3ad):</h3>
+                    <table class="w-full text-left mt-2 border-collapse">
+                        <thead>
+                            <tr class="bg-slate-700">
+                                <th class="p-2 border border-slate-600">Mode</th>
+                                <th class="p-2 border border-slate-600">Mô tả</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td class="p-2 border border-slate-600 font-bold text-blue-400">Active</td>
+                                <td class="p-2 border border-slate-600">Chủ động gửi các gói tin LACP để đàm phán tạo kênh.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-2 border border-slate-600 font-bold text-purple-400">Passive</td>
+                                <td class="p-2 border border-slate-600">Chỉ nằm im lắng nghe. Nếu có gói LACP đến, nó mới phản hồi.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-2 border border-slate-600 font-bold text-slate-400">On</td>
+                                <td class="p-2 border border-slate-600">Bật EtherChannel cưỡng chế. Không chạy giao thức LACP. Cực kỳ nguy hiểm nếu cấu hình sai.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <div class="bg-blue-900 bg-opacity-30 border-l-4 border-blue-500 p-3 mt-4 text-sm">
+                        <strong>Mẹo nhớ:</strong> Để tạo kênh thành công, ít nhất 1 bên phải "Chủ động" (Active). Nếu 2 người cùng "Bị động" (Passive) thì sẽ không ai nói chuyện với ai.
+                    </div>
+                </div>
+                <div class="mt-6 text-right">
+                    <button onclick="closeTheory()" class="bg-slate-700 hover:bg-slate-600 text-white px-6 py-2 rounded-md transition">Đóng</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Set initial simulation on load
+        window.onload = () => {
+            runSimulation();
+        };
+
+        function showTheory() {
+            document.getElementById('theoryModal').classList.remove('hidden');
+        }
+
+        function closeTheory() {
+            document.getElementById('theoryModal').classList.add('hidden');
+        }
+
+        function logConsole(message, type = 'info') {
+            const consoleDiv = document.getElementById('consoleOutput');
+            const time = new Date().toLocaleTimeString('vi-VN', { hour12: false });
+            
+            let colorClass = 'text-slate-300';
+            if (type === 'success') colorClass = 'text-emerald-400';
+            if (type === 'error') colorClass = 'text-red-400';
+            if (type === 'warning') colorClass = 'text-yellow-400';
+            if (type === 'system') colorClass = 'text-blue-400';
+
+            const logItem = document.createElement('div');
+            logItem.className = `${colorClass} mb-1`;
+            logItem.innerHTML = `<span class="text-slate-600">[${time}]</span> > ${message}`;
+            
+            consoleDiv.appendChild(logItem);
+            consoleDiv.scrollTop = consoleDiv.scrollHeight; // Auto scroll to bottom
+        }
+
+        function resetVisuals() {
+            // Reset links
+            for(let i=1; i<=3; i++) {
+                const link = document.getElementById(`link${i}`);
+                const status = document.getElementById(`status${i}`);
+                const flow = document.getElementById(`flow${i}`);
+                const icon = document.getElementById(`icon${i}`);
+                
+                link.className = 'absolute w-full h-full transition-all duration-500';
+                status.innerText = `Link ${i}`;
+                status.className = `absolute text-[10px] bg-slate-900 px-1 rounded text-slate-300 left-1/2 transform -translate-x-1/2 z-10`;
+                
+                // Định vị lại các label status
+                if(i===1) status.classList.add('top-[15%]');
+                if(i===2) { status.classList.add('top-[50%]', '-translate-y-1/2'); }
+                if(i===3) status.classList.add('bottom-[15%]');
+
+                flow.classList.add('hidden');
+                icon.classList.add('hidden');
+            }
+            
+            // Reset Box
+            document.getElementById('channelGroup').classList.remove('bundled');
+            document.getElementById('logicalLabel').classList.add('hidden');
+            document.getElementById('bandwidthValue').innerText = '-- Gbps';
+            document.getElementById('bandwidthValue').className = 'text-xl font-bold text-slate-300';
+        }
+
+        function setLinkState(linkNum, state) {
+            const link = document.getElementById(`link${linkNum}`);
+            const status = document.getElementById(`status${linkNum}`);
+            const flow = document.getElementById(`flow${linkNum}`);
+            const icon = document.getElementById(`icon${linkNum}`);
+            
+            link.className = 'absolute w-full h-full transition-all duration-500'; // Reset base
+            flow.classList.add('hidden');
+            icon.classList.remove('hidden');
+            
+            if (state === 'forwarding') {
+                link.classList.add('bg-emerald-500', 'opacity-80');
+                flow.classList.remove('hidden'); // Hiển thị luồng dữ liệu chạy
+                icon.innerHTML = '<i class="fas fa-check-circle text-white"></i>';
+                status.innerText = "Chạy (Up)";
+                status.className = status.className.replace(/text-[a-z]+-400/g, '') + ' text-emerald-400';
+            } else if (state === 'blocked') {
+                link.classList.add('bg-amber-600', 'opacity-50');
+                icon.innerHTML = '<i class="fas fa-ban text-white"></i>';
+                status.innerText = "Khóa (STP)";
+                status.className = status.className.replace(/text-[a-z]+-400/g, '') + ' text-amber-400';
+            } else if (state === 'error') {
+                link.classList.add('bg-red-600');
+                icon.innerHTML = '<i class="fas fa-exclamation-triangle text-white animate-pulse"></i>';
+                status.innerText = "Lỗi (Err-Disable)";
+                status.className = status.className.replace(/text-[a-z]+-400/g, '') + ' text-red-400';
+            }
+        }
+
+        function updateBandwidth(speed, type) {
+            const bwEl = document.getElementById('bandwidthValue');
+            bwEl.innerText = speed;
+            bwEl.className = 'text-xl font-bold ' + (type === 'high' ? 'text-emerald-400' : (type === 'low' ? 'text-amber-400' : 'text-red-400'));
+        }
+
+        function runSimulation() {
+            const modeA = document.getElementById('modeA').value;
+            const modeB = document.getElementById('modeB').value;
+
+            // Update Labels under Switches
+            document.getElementById('labelA').innerText = modeA.toUpperCase();
+            document.getElementById('labelB').innerText = modeB.toUpperCase();
+
+            document.getElementById('consoleOutput').innerHTML = ''; // Clear console
+            logConsole(`Đang áp dụng cấu hình: Switch A [${modeA.toUpperCase()}] --- Switch B [${modeB.toUpperCase()}]`, 'system');
+
+            resetVisuals();
+
+            setTimeout(() => {
+                evaluateLACP(modeA, modeB);
+            }, 800); // Small delay for visual effect
+        }
+
+        function evaluateLACP(a, b) {
+            let result = '';
+
+            // Matrix Logic
+            if (
+                (a === 'active' && b === 'active') ||
+                (a === 'active' && b === 'passive') ||
+                (a === 'passive' && b === 'active')
+            ) {
+                // SUCCESS - LACP Negotiated
+                logConsole('Giao thức LACP đã đàm phán thành công.', 'success');
+                logConsole('Hậu quả: 3 liên kết vật lý đã được gộp thành 1 kênh logic (Port-Channel). Băng thông tăng gấp 3. Không bị STP khóa cổng.', 'success');
+                
+                // Visuals
+                document.getElementById('channelGroup').classList.add('bundled');
+                document.getElementById('logicalLabel').classList.remove('hidden');
+                setLinkState(1, 'forwarding');
+                setLinkState(2, 'forwarding');
+                setLinkState(3, 'forwarding');
+                updateBandwidth('3 Gbps', 'high');
+
+            } else if (a === 'passive' && b === 'passive') {
+                // FAIL - No Negotiation
+                logConsole('LỖI: Cả 2 Switch đều chờ đợi LACP (Passive). Không bên nào gửi yêu cầu tạo kênh.', 'error');
+                logConsole('Hậu quả: EtherChannel KHÔNG được tạo. Các cổng hoạt động như các link độc lập bình thường.', 'warning');
+                logConsole('Hành động của STP: Spanning Tree Protocol phát hiện lặp vòng (Loop). Port 2 và 3 bị đưa vào trạng thái BLOCKING.', 'warning');
+                
+                // Visuals (STP kicks in)
+                setLinkState(1, 'forwarding'); // Link 1 works
+                setLinkState(2, 'blocked');    // Link 2 blocked by STP
+                setLinkState(3, 'blocked');    // Link 3 blocked by STP
+                updateBandwidth('1 Gbps', 'low');
+
+            } else if (a === 'on' && b === 'on') {
+                // SUCCESS - Forced (No LACP)
+                logConsole('CẢNH BÁO: EtherChannel được tạo cưỡng chế (Mode ON). Không sử dụng giao thức đàm phán an toàn.', 'warning');
+                logConsole('Hậu quả: Kênh đã được tạo (Port-Channel Up), băng thông x3. Tuy nhiên, nếu có dây cắm nhầm, mạng có thể bị sập (Loop).', 'success');
+                
+                document.getElementById('channelGroup').classList.add('bundled');
+                document.getElementById('logicalLabel').classList.remove('hidden');
+                setLinkState(1, 'forwarding');
+                setLinkState(2, 'forwarding');
+                setLinkState(3, 'forwarding');
+                updateBandwidth('3 Gbps', 'high');
+
+            } else if ((a === 'on' && (b === 'active' || b === 'passive')) || 
+                       (b === 'on' && (a === 'active' || a === 'passive'))) {
+                // FATAL ERROR - Mismatch mode
+                logConsole('LỖI NGHIÊM TRỌNG: Mất đồng bộ cấu hình! Một bên ép buộc lên kênh (ON), bên kia cố gắng dùng LACP.', 'error');
+                logConsole('Hậu quả: Switch phát hiện sự bất thường. Hệ điều hành IOS có thể đưa các cổng vào trạng thái Lỗi (err-disable) để bảo vệ mạng.', 'error');
+                
+                // Visuals (Error state)
+                setLinkState(1, 'error');
+                setLinkState(2, 'error');
+                setLinkState(3, 'error');
+                updateBandwidth('0 Gbps (Down)', 'error');
+
+            } else if (a === 'unconfigured' || b === 'unconfigured') {
+                // UNCONFIGURED - Standalone Links
+                logConsole('Thông báo: Tính năng gom kênh chưa được bật ở một hoặc cả hai đầu.', 'info');
+                logConsole('Hậu quả: Các liên kết hoạt động độc lập. Để chống lặp vòng (Broadcast Storm), giao thức STP sẽ nhảy vào can thiệp.', 'warning');
+                logConsole('STP khóa (Block) 2 liên kết, chỉ cho phép dữ liệu chạy qua 1 liên kết duy nhất (Băng thông = 1x).', 'info');
+                
+                // Visuals (STP kicks in)
+                setLinkState(1, 'forwarding');
+                setLinkState(2, 'blocked');
+                setLinkState(3, 'blocked');
+                updateBandwidth('1 Gbps', 'low');
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trình Mô Phỏng Cấu Hình IPv4 & VLSM</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .terminal {
+            background-color: #1e1e1e;
+            color: #4af626;
+            font-family: 'Courier New', Courier, monospace;
+        }
+        /* Custom scrollbar for terminal */
+        .terminal::-webkit-scrollbar { width: 8px; }
+        .terminal::-webkit-scrollbar-track { background: #1e1e1e; }
+        .terminal::-webkit-scrollbar-thumb { background: #4af626; border-radius: 4px; }
+        
+        .device-card { transition: all 0.3s ease; }
+        .device-card:hover { transform: translateY(-2px); box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 min-h-screen">
+
+    <!-- Header -->
+    <header class="bg-blue-600 text-white p-4 shadow-md">
+        <div class="max-w-6xl mx-auto flex justify-between items-center">
+            <h1 class="text-2xl font-bold">🌐 THE BÁO: 1.5 Trình Mô Phỏng Subnetting & VLSM</h1>
+            <span class="hidden md:inline text-sm bg-blue-700 px-3 py-1 rounded-full">1.5 Cấu hình IPv4</span>
+        </div>
+    </header>
+
+    <main class="max-w-6xl mx-auto p-4 grid grid-cols-1 lg:grid-cols-3 gap-6 mt-4">
+        
+        <!-- Left Column: Instructions & Topology -->
+        <div class="lg:col-span-1 space-y-6">
+            
+            <!-- Bài toán -->
+            <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-200">
+                <h2 class="text-xl font-bold mb-3 text-blue-700 flex items-center">
+                    <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>
+                    Tình huống (Scenario)
+                </h2>
+                <p class="text-sm text-gray-600 mb-2">Công ty bạn được cấp địa chỉ mạng: <strong>192.168.1.0/24</strong>. Bạn cần chia mạng này bằng VLSM cho 2 phòng ban:</p>
+                <ul class="list-disc pl-5 text-sm text-gray-700 space-y-1 mb-4">
+                    <li><strong>LAN A (G0/0):</strong> Yêu cầu 50 hosts.</li>
+                    <li><strong>LAN B (G0/1):</strong> Yêu cầu 20 hosts.</li>
+                </ul>
+                <div class="bg-yellow-50 border border-yellow-200 p-3 rounded-lg text-sm text-yellow-800">
+                    <strong>Nhiệm vụ:</strong> Tính toán Subnet Mask, gán IP hợp lệ cho Router và các PC, đảm bảo hai mạng không bị trùng lặp (overlap) và có thể Ping được nhau.
+                </div>
+            </div>
+
+            <!-- Topology -->
+            <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-200 text-center">
+                <h2 class="text-lg font-bold mb-4 text-gray-700">Sơ đồ mạng</h2>
+                <div class="flex items-center justify-between relative">
+                    <!-- Line connecting -->
+                    <div class="absolute w-full h-1 bg-gray-300 top-1/2 -z-10 transform -translate-y-1/2"></div>
+                    
+                    <!-- PC A -->
+                    <div class="flex flex-col items-center bg-white px-2">
+                        <div class="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center border-2 border-blue-500 z-10">
+                            💻
+                        </div>
+                        <span class="font-bold text-sm mt-1">PC-A</span>
+                        <span class="text-xs text-gray-500">LAN A</span>
+                    </div>
+
+                    <!-- Router -->
+                    <div class="flex flex-col items-center bg-white px-2">
+                        <div class="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center border-2 border-red-500 z-10 relative">
+                            <span class="absolute -left-6 text-xs font-mono bg-white px-1">G0/0</span>
+                            <span class="absolute -right-6 text-xs font-mono bg-white px-1">G0/1</span>
+                            🖲️
+                        </div>
+                        <span class="font-bold text-sm mt-1">Router</span>
+                    </div>
+
+                    <!-- PC B -->
+                    <div class="flex flex-col items-center bg-white px-2">
+                        <div class="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center border-2 border-green-500 z-10">
+                            💻
+                        </div>
+                        <span class="font-bold text-sm mt-1">PC-B</span>
+                        <span class="text-xs text-gray-500">LAN B</span>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Right Column: Configuration & Terminal -->
+        <div class="lg:col-span-2 space-y-6">
+            
+            <!-- Forms Cấu hình -->
+            <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-200">
+                <div class="flex justify-between items-center mb-4 border-b pb-2">
+                    <h2 class="text-xl font-bold text-gray-800">Cấu hình Thiết bị</h2>
+                    <button onclick="loadSolution()" class="text-sm bg-indigo-100 hover:bg-indigo-200 text-indigo-700 py-1 px-3 rounded-md transition">💡 Xem Gợi ý VLSM</button>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <!-- PC A Config -->
+                    <div class="border border-blue-200 bg-blue-50/30 p-4 rounded-lg device-card">
+                        <h3 class="font-bold text-blue-700 border-b border-blue-200 pb-2 mb-3">💻 PC-A (LAN A)</h3>
+                        <div class="space-y-2">
+                            <div>
+                                <label class="block text-xs font-semibold text-gray-600">IP Address</label>
+                                <input type="text" id="pca-ip" class="w-full text-sm border-gray-300 rounded p-1.5 focus:ring-blue-500 focus:border-blue-500 border" placeholder="VD: 192.168.1.10">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-gray-600">Subnet Mask</label>
+                                <input type="text" id="pca-mask" class="w-full text-sm border-gray-300 rounded p-1.5 focus:ring-blue-500 border" placeholder="VD: 255.255.255.192">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-gray-600">Default Gateway</label>
+                                <input type="text" id="pca-gw" class="w-full text-sm border-gray-300 rounded p-1.5 focus:ring-blue-500 border" placeholder="IP của Router G0/0">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Router Config -->
+                    <div class="border border-red-200 bg-red-50/30 p-4 rounded-lg device-card">
+                        <h3 class="font-bold text-red-700 border-b border-red-200 pb-2 mb-3">🖲️ Router</h3>
+                        <div class="space-y-2">
+                            <div class="bg-white p-2 rounded border border-gray-200">
+                                <span class="block text-xs font-bold text-gray-700 mb-1">Interface G0/0 (LAN A)</span>
+                                <input type="text" id="r-g0-ip" class="w-full text-sm mb-1 border-gray-300 rounded p-1 border" placeholder="IP Address">
+                                <input type="text" id="r-g0-mask" class="w-full text-sm border-gray-300 rounded p-1 border" placeholder="Subnet Mask">
+                            </div>
+                            <div class="bg-white p-2 rounded border border-gray-200">
+                                <span class="block text-xs font-bold text-gray-700 mb-1">Interface G0/1 (LAN B)</span>
+                                <input type="text" id="r-g1-ip" class="w-full text-sm mb-1 border-gray-300 rounded p-1 border" placeholder="IP Address">
+                                <input type="text" id="r-g1-mask" class="w-full text-sm border-gray-300 rounded p-1 border" placeholder="Subnet Mask">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- PC B Config -->
+                    <div class="border border-green-200 bg-green-50/30 p-4 rounded-lg device-card">
+                        <h3 class="font-bold text-green-700 border-b border-green-200 pb-2 mb-3">💻 PC-B (LAN B)</h3>
+                        <div class="space-y-2">
+                            <div>
+                                <label class="block text-xs font-semibold text-gray-600">IP Address</label>
+                                <input type="text" id="pcb-ip" class="w-full text-sm border-gray-300 rounded p-1.5 focus:ring-green-500 border" placeholder="VD: 192.168.1.70">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-gray-600">Subnet Mask</label>
+                                <input type="text" id="pcb-mask" class="w-full text-sm border-gray-300 rounded p-1.5 focus:ring-green-500 border" placeholder="VD: 255.255.255.224">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-gray-600">Default Gateway</label>
+                                <input type="text" id="pcb-gw" class="w-full text-sm border-gray-300 rounded p-1.5 focus:ring-green-500 border" placeholder="IP của Router G0/1">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-5 flex justify-center">
+                    <button onclick="applyConfiguration()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg shadow transition w-full md:w-auto">
+                        💾 Áp dụng & Kiểm tra cấu hình
+                    </button>
+                </div>
+            </div>
+
+            <!-- Testing & Console -->
+            <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-200">
+                <div class="flex flex-col md:flex-row justify-between md:items-center mb-4 gap-3">
+                    <div class="flex items-center space-x-2">
+                        <select id="ping-src" class="border border-gray-300 rounded p-2 text-sm bg-gray-50">
+                            <option value="pca">PC-A</option>
+                            <option value="pcb">PC-B</option>
+                            <option value="router">Router</option>
+                        </select>
+                        <span class="font-bold text-gray-500">Ping tới</span>
+                        <select id="ping-dst" class="border border-gray-300 rounded p-2 text-sm bg-gray-50">
+                            <option value="pcb">PC-B</option>
+                            <option value="pca">PC-A</option>
+                            <option value="router">Router</option>
+                        </select>
+                        <button onclick="executePing()" id="btn-ping" class="bg-gray-800 hover:bg-black text-white font-bold py-2 px-4 rounded shadow transition disabled:opacity-50">
+                            ▶ Gửi Ping
+                        </button>
+                    </div>
+                    <button onclick="clearConsole()" class="text-sm text-gray-500 hover:text-red-500 transition">🗑 Xóa log</button>
+                </div>
+
+                <!-- Terminal Display -->
+                <div id="terminal" class="terminal p-4 rounded-lg h-64 overflow-y-auto text-sm leading-relaxed shadow-inner">
+                    <div>> Khởi động Hệ điều hành Mạng...</div>
+                    <div class="text-gray-400">> Vui lòng nhập cấu hình và nhấn "Áp dụng & Kiểm tra cấu hình" trước khi Ping.</div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Hướng dẫn sử dụng Modal (Optional - currently integrated in UI) -->
+    <footer class="text-center text-gray-500 text-sm py-6">
+        Trình mô phỏng định tuyến IPv4 tĩnh bằng JavaScript. Dành cho mục đích giáo dục.
+    </footer>
+
+    <script>
+        // --- KHOẢNG MẠNG (NETWORKING LOGIC) ---
+
+        // Chuyển IP string sang số nguyên 32-bit
+        function ip2long(ip) {
+            let parts = ip.split('.');
+            if (parts.length !== 4) return null;
+            let res = 0;
+            for (let i = 0; i < 4; i++) {
+                let num = parseInt(parts[i], 10);
+                if (isNaN(num) || num < 0 || num > 255) return null;
+                res = (res << 8) + num;
+            }
+            return res >>> 0; // Unsigned 32-bit
+        }
+
+        // Chuyển số nguyên 32-bit về IP string
+        function long2ip(long) {
+            return [
+                (long >>> 24) & 255,
+                (long >>> 16) & 255,
+                (long >>> 8) & 255,
+                long & 255
+            ].join('.');
+        }
+
+        // Lấy thông tin mạng (Network address, Broadcast address) từ IP và Mask
+        function getNetworkInfo(ipStr, maskStr) {
+            const ip = ip2long(ipStr);
+            const mask = ip2long(maskStr);
+            if (ip === null || mask === null) return null;
+            
+            // Mask validation: must be contiguous 1s followed by 0s.
+            if ((~mask + 1) & (~mask)) return null; // Invalid mask check trick
+
+            const network = (ip & mask) >>> 0;
+            const broadcast = (network | (~mask)) >>> 0;
+            
+            return {
+                ip: ip,
+                mask: mask,
+                network: network,
+                broadcast: broadcast,
+                ipStr: ipStr,
+                maskStr: maskStr,
+                networkStr: long2ip(network),
+                broadcastStr: long2ip(broadcast)
+            };
+        }
+
+        // Kiểm tra xem IP có hợp lệ cho Host không (Không phải Network, không phải Broadcast)
+        function isValidHostIP(netInfo) {
+            if (!netInfo) return false;
+            // Ngoại lệ: /31 hoặc /32
+            if (netInfo.mask === 4294967294 || netInfo.mask === 4294967295) return true; 
+            return (netInfo.ip > netInfo.network && netInfo.ip < netInfo.broadcast);
+        }
+
+        // Kiểm tra 2 dải mạng có đè lên nhau không (Overlap)
+        function isOverlap(netA, netB) {
+            return Math.max(netA.network, netB.network) <= Math.min(netA.broadcast, netB.broadcast);
+        }
+
+        // Kiểm tra IP có nằm trong Subnet không
+        function isInSubnet(targetIpLong, netInfo) {
+            if (!netInfo || targetIpLong === null) return false;
+            return (targetIpLong >= netInfo.network && targetIpLong <= netInfo.broadcast);
+        }
+
+        // --- TRẠNG THÁI HỆ THỐNG ---
+        let currentConfig = {
+            valid: false,
+            pca: null,
+            pcb: null,
+            router: { g0: null, g1: null }
+        };
+
+        const terminal = document.getElementById('terminal');
+
+        function printLog(msg, type = "normal") {
+            const div = document.createElement('div');
+            if (type === 'error') {
+                div.className = 'text-red-500 font-bold';
+                div.innerText = `[LỖI] ${msg}`;
+            } else if (type === 'success') {
+                div.className = 'text-green-400 font-bold';
+                div.innerText = `[THÀNH CÔNG] ${msg}`;
+            } else if (type === 'info') {
+                div.className = 'text-blue-300';
+                div.innerText = `[INFO] ${msg}`;
+            } else if (type === 'warn') {
+                div.className = 'text-yellow-400';
+                div.innerText = `[CẢNH BÁO] ${msg}`;
+            } else {
+                div.innerText = msg;
+            }
+            terminal.appendChild(div);
+            terminal.scrollTop = terminal.scrollHeight;
+        }
+
+        function clearConsole() {
+            terminal.innerHTML = '<div>> Terminal cleared...</div>';
+        }
+
+        // Hàm nạp đáp án để test
+        function loadSolution() {
+            document.getElementById('pca-ip').value = '192.168.1.10';
+            document.getElementById('pca-mask').value = '255.255.255.192';
+            document.getElementById('pca-gw').value = '192.168.1.1';
+            
+            document.getElementById('r-g0-ip').value = '192.168.1.1';
+            document.getElementById('r-g0-mask').value = '255.255.255.192';
+            
+            document.getElementById('r-g1-ip').value = '192.168.1.65';
+            document.getElementById('r-g1-mask').value = '255.255.255.224';
+
+            document.getElementById('pcb-ip').value = '192.168.1.70';
+            document.getElementById('pcb-mask').value = '255.255.255.224';
+            document.getElementById('pcb-gw').value = '192.168.1.65';
+
+            printLog("Đã nạp cấu hình mẫu chuẩn VLSM. Hãy nhấn 'Áp dụng'.", "info");
+        }
+
+        // --- VALIDATION LOGIC ---
+        function applyConfiguration() {
+            printLog("--------------------------------", "normal");
+            printLog("Đang kiểm tra và áp dụng cấu hình...", "normal");
+            
+            let hasError = false;
+            currentConfig.valid = false;
+
+            // 1. Đọc Router
+            const rG0Ip = document.getElementById('r-g0-ip').value.trim();
+            const rG0Mask = document.getElementById('r-g0-mask').value.trim();
+            const rG1Ip = document.getElementById('r-g1-ip').value.trim();
+            const rG1Mask = document.getElementById('r-g1-mask').value.trim();
+
+            const netG0 = getNetworkInfo(rG0Ip, rG0Mask);
+            const netG1 = getNetworkInfo(rG1Ip, rG1Mask);
+
+            if (!netG0 || !netG1) {
+                printLog("Router: Định dạng IP hoặc Subnet Mask không hợp lệ.", "error");
+                hasError = true;
+            } else {
+                if (!isValidHostIP(netG0)) {
+                    printLog(`Router G0/0: IP ${rG0Ip} không thể gán (là Network hoặc Broadcast).`, "error");
+                    hasError = true;
+                }
+                if (!isValidHostIP(netG1)) {
+                    printLog(`Router G0/1: IP ${rG1Ip} không thể gán (là Network hoặc Broadcast).`, "error");
+                    hasError = true;
+                }
+                if (isOverlap(netG0, netG1)) {
+                    printLog(`Router: Bảng định tuyến lỗi! G0/0 (${netG0.networkStr}) và G0/1 (${netG1.networkStr}) bị chồng chéo (Overlap).`, "error");
+                    hasError = true;
+                }
+                currentConfig.router.g0 = netG0;
+                currentConfig.router.g1 = netG1;
+            }
+
+            // 2. Đọc PC-A
+            const pcaIp = document.getElementById('pca-ip').value.trim();
+            const pcaMask = document.getElementById('pca-mask').value.trim();
+            const pcaGw = document.getElementById('pca-gw').value.trim();
+            const netPcA = getNetworkInfo(pcaIp, pcaMask);
+            
+            if (!netPcA) {
+                printLog("PC-A: Định dạng IP hoặc Mask không hợp lệ.", "error");
+                hasError = true;
+            } else if (!isValidHostIP(netPcA)) {
+                printLog(`PC-A: IP ${pcaIp} không hợp lệ (Trùng Network/Broadcast address).`, "error");
+                hasError = true;
+            } else {
+                currentConfig.pca = { ...netPcA, gw: pcaGw, gwLong: ip2long(pcaGw) };
+                if (currentConfig.pca.gwLong && !isInSubnet(currentConfig.pca.gwLong, netPcA)) {
+                    printLog(`PC-A: Default Gateway (${pcaGw}) không nằm trong cùng mạng con với PC-A. PC sẽ không thể giao tiếp ra ngoài.`, "warn");
+                }
+            }
+
+            // 3. Đọc PC-B
+            const pcbIp = document.getElementById('pcb-ip').value.trim();
+            const pcbMask = document.getElementById('pcb-mask').value.trim();
+            const pcbGw = document.getElementById('pcb-gw').value.trim();
+            const netPcB = getNetworkInfo(pcbIp, pcbMask);
+
+            if (!netPcB) {
+                printLog("PC-B: Định dạng IP hoặc Mask không hợp lệ.", "error");
+                hasError = true;
+            } else if (!isValidHostIP(netPcB)) {
+                printLog(`PC-B: IP ${pcbIp} không hợp lệ (Trùng Network/Broadcast address).`, "error");
+                hasError = true;
+            } else {
+                currentConfig.pcb = { ...netPcB, gw: pcbGw, gwLong: ip2long(pcbGw) };
+                if (currentConfig.pcb.gwLong && !isInSubnet(currentConfig.pcb.gwLong, netPcB)) {
+                    printLog(`PC-B: Default Gateway (${pcbGw}) không nằm trong cùng mạng con với PC-B.`, "warn");
+                }
+            }
+
+            // Kiểm tra trùng IP
+            if (netPcA && netG0 && netPcA.ip === netG0.ip) { printLog("Xung đột IP: PC-A và Router G0/0 trùng IP.", "error"); hasError = true; }
+            if (netPcB && netG1 && netPcB.ip === netG1.ip) { printLog("Xung đột IP: PC-B và Router G0/1 trùng IP.", "error"); hasError = true; }
+            if (netPcA && netPcB && netPcA.ip === netPcB.ip) { printLog("Xung đột IP: PC-A và PC-B trùng IP.", "error"); hasError = true; }
+
+            if (!hasError) {
+                currentConfig.valid = true;
+                printLog("Cấu hình hợp lệ. Đã lưu vào bộ nhớ Router và các PC.", "success");
+            } else {
+                printLog("Lưu cấu hình thất bại. Vui lòng sửa các lỗi trên.", "error");
+            }
+        }
+
+        // --- PING SIMULATION LOGIC ---
+        function executePing() {
+            const srcId = document.getElementById('ping-src').value;
+            const dstId = document.getElementById('ping-dst').value;
+
+            printLog("--------------------------------", "normal");
+            printLog(`> Thực thi lệnh Ping từ [${srcId.toUpperCase()}] tới [${dstId.toUpperCase()}]...`, "info");
+
+            if (srcId === dstId) {
+                printLog("Thành công: Tự ping chính mình (Loopback).", "success");
+                return;
+            }
+
+            if (!currentConfig.valid) {
+                printLog("Hệ thống chưa được cấu hình đúng. Vui lòng 'Áp dụng cấu hình' trước.", "error");
+                return;
+            }
+
+            let srcDevice, dstDevice;
+            
+            // Xử lý Source
+            if (srcId === 'pca') srcDevice = currentConfig.pca;
+            if (srcId === 'pcb') srcDevice = currentConfig.pcb;
+            if (srcId === 'router') {
+                printLog("Tính năng ping từ Router đang được đơn giản hóa. Hãy thử PC tới PC.", "warn");
+                return;
+            }
+
+            // Target IP xác định
+            let targetIpLong;
+            if (dstId === 'pca') targetIpLong = currentConfig.pca.ip;
+            if (dstId === 'pcb') targetIpLong = currentConfig.pcb.ip;
+            if (dstId === 'router') targetIpLong = currentConfig.router.g0.ip; // Tạm giả lập ping router là G0
+
+            // LOGIC ĐỊNH TUYẾN THỰC TẾ
+            setTimeout(() => step1CheckLocal(srcDevice, targetIpLong, dstId), 500);
+        }
+
+        // Bước 1: Host kiểm tra Target có cùng Subnet không
+        function step1CheckLocal(src, targetIpLong, dstId) {
+            printLog(`[Giao thức ARP] ${src.ipStr} kiểm tra xem đích ${long2ip(targetIpLong)} có nằm trong mạng LAN của mình không (Dựa vào Subnet Mask của nguồn)...`, "normal");
+            
+            let isLocal = (src.ip & src.mask) === (targetIpLong & src.mask);
+
+            setTimeout(() => {
+                if (isLocal) {
+                    printLog(`-> Đích nằm TRONG cùng mạng con. Gửi trực tiếp qua Switch (ARP Request).`, "normal");
+                    // Kiểm tra đích có thực sự cấu hình đúng dải không
+                    let dstDevice = (dstId === 'pca') ? currentConfig.pca : currentConfig.pcb;
+                    if (dstDevice && (dstDevice.ip & dstDevice.mask) === (src.ip & src.mask)) {
+                        printLog(`Ping Thành công! Giao tiếp Layer 2 thành công.`, "success");
+                    } else {
+                        printLog(`Ping Thất bại! Đích không phản hồi do cấu hình sai Subnet Mask ở đích.`, "error");
+                    }
+                } else {
+                    printLog(`-> Đích nằm NGOÀI mạng con. Cần gửi gói tin tới Default Gateway.`, "normal");
+                    step2SendToGateway(src, targetIpLong, dstId);
+                }
+            }, 800);
+        }
+
+        // Bước 2: Gửi tới Gateway
+        function step2SendToGateway(src, targetIpLong, dstId) {
+            if (!src.gwLong) {
+                printLog(`Ping Thất bại! Host không có cấu hình Default Gateway. Gói tin bị drop.`, "error");
+                return;
+            }
+
+            printLog(`Đang gửi gói tin tới Default Gateway IP: ${src.gw}...`, "normal");
+            
+            setTimeout(() => {
+                // Kiểm tra Gateway có trong cùng mạng LAN với Source không
+                let isGwLocal = (src.ip & src.mask) === (src.gwLong & src.mask);
+                if (!isGwLocal) {
+                    printLog(`Ping Thất bại! Default Gateway (${src.gw}) KHÔNG nằm trong mạng con của Host (${src.networkStr}). Host không thể liên lạc với Gateway.`, "error");
+                    return;
+                }
+
+                // Kiểm tra Router có thực sự mang IP Gateway này trên giao diện kết nối không
+                let isRouterHavingGw = (currentConfig.router.g0.ip === src.gwLong) || (currentConfig.router.g1.ip === src.gwLong);
+                if (!isRouterHavingGw) {
+                    printLog(`Ping Thất bại! Request time out. Không có thiết bị Router nào sở hữu IP ${src.gw} trên mạng này.`, "error");
+                    return;
+                }
+
+                printLog(`Gói tin đã đến Router an toàn qua Gateway ${src.gw}.`, "success");
+                step3RouterRouting(src, targetIpLong, dstId);
+
+            }, 1000);
+        }
+
+        // Bước 3: Router tra bảng định tuyến
+        function step3RouterRouting(src, targetIpLong, dstId) {
+            printLog(`[Router] Đang kiểm tra bảng định tuyến (Routing Table) tìm đường tới ${long2ip(targetIpLong)}...`, "info");
+            
+            setTimeout(() => {
+                let matchInterface = null;
+                
+                // Route Lookup: Có match với subnet của G0/0 hoặc G0/1 không?
+                if (isInSubnet(targetIpLong, currentConfig.router.g0)) matchInterface = { name: "G0/0", net: currentConfig.router.g0 };
+                else if (isInSubnet(targetIpLong, currentConfig.router.g1)) matchInterface = { name: "G0/1", net: currentConfig.router.g1 };
+
+                if (!matchInterface) {
+                    printLog(`Ping Thất bại! Router trả về: "Destination host unreachable". Router không có route tới mạng đích.`, "error");
+                    return;
+                }
+
+                printLog(`-> Router tìm thấy route. Đẩy gói tin ra interface ${matchInterface.name}.`, "normal");
+                step4DestinationCheck(src, targetIpLong, dstId, matchInterface.net);
+
+            }, 1000);
+        }
+
+        // Bước 4: Tới đích và kiểm tra chiều về
+        function step4DestinationCheck(src, targetIpLong, dstId, routerExitNet) {
+            setTimeout(() => {
+                let dstDevice = (dstId === 'pca') ? currentConfig.pca : currentConfig.pcb;
+                
+                // Kiểm tra thiết bị đích có nhận định mạng giống Router không
+                if (dstDevice.mask !== routerExitNet.mask || dstDevice.ip !== targetIpLong) {
+                    printLog(`Ping Thất bại! Máy đích nhận được gói tin nhưng cấu hình Subnet Mask sai lệch. Gói tin bị huỷ.`, "error");
+                    return;
+                }
+
+                printLog(`Gói tin (ICMP Echo Request) đã đến ${dstId.toUpperCase()} an toàn. Đang chuẩn bị gửi gói Reply (ICMP Echo Reply)...`, "info");
+
+                // Giả lập chiều về (Rất quan trọng: Đích phải có route về, tức là có Default Gateway hợp lệ)
+                setTimeout(() => {
+                    if (!dstDevice.gwLong) {
+                        printLog(`Ping Thất bại! Chiều về lỗi: ${dstId.toUpperCase()} không có Default Gateway để trả lời mạng khác.`, "error");
+                        return;
+                    }
+                    
+                    let isDstGwLocal = (dstDevice.ip & dstDevice.mask) === (dstDevice.gwLong & dstDevice.mask);
+                    if (!isDstGwLocal) {
+                        printLog(`Ping Thất bại! Chiều về lỗi: Default Gateway của ${dstId.toUpperCase()} không khớp mạng con.`, "error");
+                        return;
+                    }
+
+                    let isRouterHavingDstGw = (currentConfig.router.g0.ip === dstDevice.gwLong) || (currentConfig.router.g1.ip === dstDevice.gwLong);
+                    if (!isRouterHavingDstGw) {
+                         printLog(`Ping Thất bại! Chiều về lỗi: Router sai IP Gateway cho ${dstId.toUpperCase()}.`, "error");
+                         return;
+                    }
+
+                    printLog(`Tất cả quá trình định tuyến 2 chiều hoàn tất xuất sắc!`, "success");
+                    printLog(`PING RESULT: Reply from ${long2ip(targetIpLong)}: bytes=32 time<1ms TTL=127`, "success");
+
+                }, 1000);
+
+            }, 800);
+        }
+
+    </script>
+</body>
+</html>

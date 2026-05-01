@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mô phỏng VLAN & 802.1Q Trunking</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom animations & styles */
+        .node { transition: all 0.3s ease; }
+        .node:hover { transform: scale(1.05); }
+        .log-enter { animation: slideIn 0.3s ease-out; }
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .vlan-10 { color: #3b82f6; } /* Blue */
+        .vlan-20 { color: #10b981; } /* Green */
+        .vlan-none { color: #6b7280; } /* Gray */
+        
+        #svg-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 0;
+        }
+        .device { z-index: 10; position: relative; }
+    </style>
+</head>
+<body class="bg-slate-100 font-sans h-screen flex flex-col md:flex-row overflow-hidden">
+
+    <!-- Cột bên trái: Cấu hình & Bảng điều khiển -->
+    <div class="w-full md:w-1/3 bg-white shadow-xl h-[40vh] md:h-screen flex flex-col z-20 border-r border-slate-200">
+        <div class="p-4 bg-slate-800 text-white">
+            <h1 class="text-xl font-bold">THE BÁO: 2.1 Mô phỏng VLAN & Trunking</h1>
+            <p class="text-xs text-slate-300 mt-1">CCNA - Network Access Concepts</p>
+        </div>
+
+        <div class="flex-1 overflow-y-auto p-4 space-y-6">
+            <!-- Khu vực cấu hình Switch -->
+            <div class="bg-slate-50 p-3 rounded-lg border border-slate-200">
+                <h2 class="font-semibold text-slate-700 mb-3 border-b pb-1">Cấu hình Switch</h2>
+                
+                <div class="space-y-4">
+                    <!-- Switch 1 -->
+                    <div>
+                        <div class="font-medium text-sm text-slate-600 mb-1">Switch 1 (SW1)</div>
+                        <div class="grid grid-cols-2 gap-2 text-sm">
+                            <div>
+                                <label class="text-xs">Port 1 (PC1):</label>
+                                <select id="sw1-p1-vlan" class="w-full border rounded p-1" onchange="updateConfig()">
+                                    <option value="10">VLAN 10 (Kế toán)</option>
+                                    <option value="20">VLAN 20 (IT)</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="text-xs">Port 2 (PC2):</label>
+                                <select id="sw1-p2-vlan" class="w-full border rounded p-1" onchange="updateConfig()">
+                                    <option value="10">VLAN 10 (Kế toán)</option>
+                                    <option value="20" selected>VLAN 20 (IT)</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Switch 2 -->
+                    <div>
+                        <div class="font-medium text-sm text-slate-600 mb-1">Switch 2 (SW2)</div>
+                        <div class="grid grid-cols-2 gap-2 text-sm">
+                            <div>
+                                <label class="text-xs">Port 1 (PC3):</label>
+                                <select id="sw2-p1-vlan" class="w-full border rounded p-1" onchange="updateConfig()">
+                                    <option value="10">VLAN 10 (Kế toán)</option>
+                                    <option value="20">VLAN 20 (IT)</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="text-xs">Port 2 (PC4):</label>
+                                <select id="sw2-p2-vlan" class="w-full border rounded p-1" onchange="updateConfig()">
+                                    <option value="10">VLAN 10 (Kế toán)</option>
+                                    <option value="20" selected>VLAN 20 (IT)</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Đường nối (Trunk/Access) -->
+                    <div class="pt-2 border-t border-slate-200">
+                        <div class="font-medium text-sm text-slate-600 mb-1">Link giữa SW1 - SW2 (Port 3)</div>
+                        <select id="link-mode" class="w-full border rounded p-1 text-sm bg-blue-50" onchange="updateConfig()">
+                            <option value="trunk">Chế độ: TRUNK (Cho phép All VLANs)</option>
+                            <option value="access10">Chế độ: ACCESS (Chỉ VLAN 10)</option>
+                            <option value="access20">Chế độ: ACCESS (Chỉ VLAN 20)</option>
+                        </select>
+                        <p class="text-[10px] text-gray-500 mt-1 italic">Thử đổi sang Access để xem hậu quả khi PC khác VLAN giao tiếp qua Switch.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Khu vực gửi dữ liệu -->
+            <div class="bg-blue-50 p-3 rounded-lg border border-blue-200">
+                <h2 class="font-semibold text-blue-800 mb-2">Hành động: Gửi Ping</h2>
+                <div class="flex space-x-2 text-sm">
+                    <select id="ping-source" class="flex-1 border rounded p-1">
+                        <option value="PC1">Từ: PC1</option>
+                        <option value="PC2">Từ: PC2</option>
+                        <option value="PC3">Từ: PC3</option>
+                        <option value="PC4">Từ: PC4</option>
+                    </select>
+                    <select id="ping-dest" class="flex-1 border rounded p-1">
+                        <option value="PC1">Đến: PC1</option>
+                        <option value="PC2">Đến: PC2</option>
+                        <option value="PC3" selected>Đến: PC3</option>
+                        <option value="PC4">Đến: PC4</option>
+                    </select>
+                </div>
+                <button onclick="startPing()" class="w-full mt-3 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition-colors shadow">
+                    Thực thi Gói tin
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Cột bên phải: Mô phỏng Topology & Console -->
+    <div class="w-full md:w-2/3 h-[60vh] md:h-screen flex flex-col relative bg-slate-100">
+        <!-- Topology Area -->
+        <div class="flex-1 relative p-4 flex flex-col justify-center items-center" id="network-container">
+            <!-- SVG dùng để vẽ dây cáp và hiệu ứng gói tin -->
+            <svg id="svg-layer">
+                <defs>
+                    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                        <polygon points="0 0, 10 3.5, 0 7" fill="#94a3b8" />
+                    </marker>
+                </defs>
+                <!-- Dây cáp sẽ được tạo bằng JS -->
+            </svg>
+
+            <!-- Network Nodes -->
+            <div class="w-full max-w-2xl flex flex-col justify-between h-full py-8 md:py-16">
+                <!-- Tầng Switch -->
+                <div class="flex justify-around items-center w-full mb-16">
+                    <div id="SW1" class="device node bg-slate-800 text-white p-4 rounded-lg shadow-lg border-b-4 border-slate-900 w-24 text-center">
+                        <div class="font-bold">SW1</div>
+                        <div class="text-[10px] mt-1 text-slate-300">L2 Switch</div>
+                    </div>
+                    
+                    <!-- Nhãn cho đường Trunk -->
+                    <div id="link-label" class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-[80px] bg-white px-2 py-1 rounded text-xs font-bold border shadow-sm z-10 text-purple-600">
+                        TRUNK (802.1Q)
+                    </div>
+
+                    <div id="SW2" class="device node bg-slate-800 text-white p-4 rounded-lg shadow-lg border-b-4 border-slate-900 w-24 text-center">
+                        <div class="font-bold">SW2</div>
+                        <div class="text-[10px] mt-1 text-slate-300">L2 Switch</div>
+                    </div>
+                </div>
+
+                <!-- Tầng PC -->
+                <div class="flex justify-between w-full px-4 md:px-12">
+                    <!-- PC cho SW1 -->
+                    <div class="flex space-x-4 md:space-x-12">
+                        <div id="PC1" class="device node bg-white p-3 rounded shadow border-t-4 border-blue-500 w-20 text-center relative">
+                            <div class="font-bold text-sm">PC1</div>
+                            <div id="lbl-pc1-vlan" class="text-[10px] font-bold text-blue-600">VLAN 10</div>
+                        </div>
+                        <div id="PC2" class="device node bg-white p-3 rounded shadow border-t-4 border-emerald-500 w-20 text-center relative">
+                            <div class="font-bold text-sm">PC2</div>
+                            <div id="lbl-pc2-vlan" class="text-[10px] font-bold text-emerald-600">VLAN 20</div>
+                        </div>
+                    </div>
+
+                    <!-- PC cho SW2 -->
+                    <div class="flex space-x-4 md:space-x-12">
+                        <div id="PC3" class="device node bg-white p-3 rounded shadow border-t-4 border-blue-500 w-20 text-center relative">
+                            <div class="font-bold text-sm">PC3</div>
+                            <div id="lbl-pc3-vlan" class="text-[10px] font-bold text-blue-600">VLAN 10</div>
+                        </div>
+                        <div id="PC4" class="device node bg-white p-3 rounded shadow border-t-4 border-emerald-500 w-20 text-center relative">
+                            <div class="font-bold text-sm">PC4</div>
+                            <div id="lbl-pc4-vlan" class="text-[10px] font-bold text-emerald-600">VLAN 20</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bảng điều khiển Console (Nhật ký) -->
+        <div class="h-48 md:h-64 bg-slate-900 border-t-4 border-slate-700 p-3 flex flex-col">
+            <div class="flex justify-between items-center mb-2">
+                <span class="text-xs text-slate-400 font-mono">Terminal Output / System Log</span>
+                <button onclick="clearLogs()" class="text-xs text-slate-400 hover:text-white">Xóa Log</button>
+            </div>
+            <div id="console-logs" class="flex-1 overflow-y-auto font-mono text-sm space-y-1 p-2 bg-black rounded shadow-inner">
+                <div class="text-green-400">System initialized. Topology ready.</div>
+                <div class="text-blue-400">Chờ lệnh gửi Ping...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Cấu trúc dữ liệu mạng
+        let config = {
+            sw1: { p1: 10, p2: 20 },
+            sw2: { p1: 10, p2: 20 },
+            link: 'trunk' // 'trunk', 'access10', 'access20'
+        };
+
+        const colors = {
+            10: '#3b82f6', // Blue
+            20: '#10b981', // Green
+            'untagged': '#94a3b8',
+            'drop': '#ef4444' // Red
+        };
+
+        let isAnimating = false;
+
+        // Cập nhật giao diện khi người dùng đổi cấu hình
+        function updateConfig() {
+            config.sw1.p1 = parseInt(document.getElementById('sw1-p1-vlan').value);
+            config.sw1.p2 = parseInt(document.getElementById('sw1-p2-vlan').value);
+            config.sw2.p1 = parseInt(document.getElementById('sw2-p1-vlan').value);
+            config.sw2.p2 = parseInt(document.getElementById('sw2-p2-vlan').value);
+            config.link = document.getElementById('link-mode').value;
+
+            // Cập nhật nhãn màu trên PC
+            updatePCLabel('PC1', config.sw1.p1);
+            updatePCLabel('PC2', config.sw1.p2);
+            updatePCLabel('PC3', config.sw2.p1);
+            updatePCLabel('PC4', config.sw2.p2);
+
+            // Cập nhật nhãn Trunk
+            const linkLabel = document.getElementById('link-label');
+            if (config.link === 'trunk') {
+                linkLabel.textContent = 'TRUNK (802.1Q)';
+                linkLabel.className = 'absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-[80px] bg-white px-2 py-1 rounded text-xs font-bold border shadow-sm z-10 text-purple-600 border-purple-300';
+            } else if (config.link === 'access10') {
+                linkLabel.textContent = 'ACCESS (VLAN 10)';
+                linkLabel.className = 'absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-[80px] bg-white px-2 py-1 rounded text-xs font-bold border shadow-sm z-10 text-blue-600 border-blue-300';
+            } else {
+                linkLabel.textContent = 'ACCESS (VLAN 20)';
+                linkLabel.className = 'absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-[80px] bg-white px-2 py-1 rounded text-xs font-bold border shadow-sm z-10 text-emerald-600 border-emerald-300';
+            }
+
+            log(`[CẤU HÌNH] Đã cập nhật topology. Link giữa SW1-SW2 là: ${config.link.toUpperCase()}`, 'info');
+        }
+
+        function updatePCLabel(pcId, vlan) {
+            const lbl = document.getElementById(`lbl-${pcId.toLowerCase()}-vlan`);
+            const pcNode = document.getElementById(pcId);
+            lbl.textContent = `VLAN ${vlan}`;
+            
+            if (vlan === 10) {
+                lbl.className = 'text-[10px] font-bold text-blue-600';
+                pcNode.className = `device node bg-white p-3 rounded shadow border-t-4 border-blue-500 w-20 text-center relative`;
+            } else {
+                lbl.className = 'text-[10px] font-bold text-emerald-600';
+                pcNode.className = `device node bg-white p-3 rounded shadow border-t-4 border-emerald-500 w-20 text-center relative`;
+            }
+        }
+
+        // Quản lý console
+        function log(message, type = 'normal') {
+            const consoleBox = document.getElementById('console-logs');
+            const div = document.createElement('div');
+            div.className = 'log-enter ';
+            
+            const time = new Date().toLocaleTimeString('vi-VN', {hour12: false});
+            
+            switch(type) {
+                case 'error': div.classList.add('text-red-400'); break;
+                case 'success': div.classList.add('text-green-400'); break;
+                case 'info': div.classList.add('text-yellow-300'); break;
+                case 'action': div.classList.add('text-purple-400', 'font-bold'); break;
+                default: div.classList.add('text-slate-300');
+            }
+            
+            div.innerHTML = `<span class="text-slate-500">[${time}]</span> ${message}`;
+            consoleBox.appendChild(div);
+            consoleBox.scrollTop = consoleBox.scrollHeight;
+        }
+
+        function clearLogs() {
+            document.getElementById('console-logs').innerHTML = '';
+        }
+
+        // Vẽ cáp mạng (SVG Lines)
+        let lines = {};
+        function drawCables() {
+            const svg = document.getElementById('svg-layer');
+            svg.innerHTML = ''; // Xóa cũ
+            
+            // Định nghĩa lại marker mũi tên vì innerHTML xóa mất
+            svg.innerHTML = `
+                <defs>
+                    <marker id="arrowhead" markerWidth="5" markerHeight="5" refX="2.5" refY="2.5" orient="auto">
+                        <polygon points="0 0, 5 2.5, 0 5" fill="#94a3b8" />
+                    </marker>
+                </defs>
+            `;
+
+            function getCenter(elId) {
+                const el = document.getElementById(elId);
+                const container = document.getElementById('network-container');
+                const elRect = el.getBoundingClientRect();
+                const contRect = container.getBoundingClientRect();
+                
+                return {
+                    x: elRect.left - contRect.left + elRect.width / 2,
+                    y: elRect.top - contRect.top + elRect.height / 2
+                };
+            }
+
+            function drawLine(id, fromId, toId, dashed=false) {
+                const p1 = getCenter(fromId);
+                const p2 = getCenter(toId);
+                const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                line.setAttribute("x1", p1.x);
+                line.setAttribute("y1", p1.y);
+                line.setAttribute("x2", p2.x);
+                line.setAttribute("y2", p2.y);
+                line.setAttribute("stroke", "#cbd5e1");
+                line.setAttribute("stroke-width", "3");
+                if (dashed) line.setAttribute("stroke-dasharray", "5,5");
+                svg.appendChild(line);
+                
+                lines[id] = {x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y};
+            }
+
+            drawLine('sw1-sw2', 'SW1', 'SW2');
+            drawLine('pc1-sw1', 'PC1', 'SW1');
+            drawLine('pc2-sw1', 'PC2', 'SW1');
+            drawLine('sw2-pc3', 'SW2', 'PC3');
+            drawLine('sw2-pc4', 'SW2', 'PC4');
+        }
+
+        window.addEventListener('resize', drawCables);
+        setTimeout(drawCables, 100); // Vẽ lần đầu khi DOM load xong
+
+        // Hệ thống Animation & Xử lý Logic Mạng
+        async function animatePacket(fromId, toId, vlanTag = null, isDrop = false) {
+            return new Promise(resolve => {
+                const svg = document.getElementById('svg-layer');
+                const p1 = getCenter(fromId);
+                const p2 = getCenter(toId);
+                
+                // Tạo frame
+                const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+                const packet = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+                packet.setAttribute("r", "8");
+                
+                let color = colors['untagged'];
+                let tagText = '';
+
+                if (vlanTag) {
+                    color = colors[vlanTag] || colors['untagged'];
+                    tagText = `802.1Q: ${vlanTag}`;
+                }
+                if (isDrop) color = colors['drop'];
+
+                packet.setAttribute("fill", color);
+                
+                g.appendChild(packet);
+
+                // Thêm chữ hiển thị VLAN Tag nếu có
+                if (vlanTag && !isDrop) {
+                    const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                    text.setAttribute("x", "0");
+                    text.setAttribute("y", "-15");
+                    text.setAttribute("font-size", "10px");
+                    text.setAttribute("font-family", "monospace");
+                    text.setAttribute("fill", color);
+                    text.setAttribute("font-weight", "bold");
+                    text.setAttribute("text-anchor", "middle");
+                    text.textContent = tagText;
+                    
+                    // Nền cho chữ dễ đọc
+                    const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+                    rect.setAttribute("x", "-35");
+                    rect.setAttribute("y", "-25");
+                    rect.setAttribute("width", "70");
+                    rect.setAttribute("height", "14");
+                    rect.setAttribute("fill", "white");
+                    rect.setAttribute("rx", "2");
+                    
+                    g.appendChild(rect);
+                    g.appendChild(text);
+                }
+
+                svg.appendChild(g);
+
+                // Animation sử dụng Web Animations API
+                const duration = 1500; // 1.5 giây
+                const animation = g.animate([
+                    { transform: `translate(${p1.x}px, ${p1.y}px)` },
+                    { transform: `translate(${p2.x}px, ${p2.y}px)` }
+                ], {
+                    duration: duration,
+                    easing: 'ease-in-out'
+                });
+
+                animation.onfinish = () => {
+                    if (isDrop) {
+                        // Hiệu ứng nổ/vỡ khi drop
+                        g.innerHTML = `<circle r="15" fill="none" stroke="red" stroke-width="2"><animate attributeName="r" to="30" dur="0.3s"/><animate attributeName="opacity" to="0" dur="0.3s"/></circle>`;
+                        setTimeout(() => svg.removeChild(g), 300);
+                    } else {
+                        svg.removeChild(g);
+                    }
+                    resolve();
+                };
+            });
+        }
+
+        function getCenter(elId) {
+            const el = document.getElementById(elId);
+            const container = document.getElementById('network-container');
+            const elRect = el.getBoundingClientRect();
+            const contRect = container.getBoundingClientRect();
+            return {
+                x: elRect.left - contRect.left + elRect.width / 2,
+                y: elRect.top - contRect.top + elRect.height / 2
+            };
+        }
+
+        // Logic Mạng cốt lõi (Mô phỏng Switching)
+        async function startPing() {
+            if (isAnimating) {
+                log("Hệ thống đang xử lý gói tin, vui lòng đợi...", "error");
+                return;
+            }
+            
+            const src = document.getElementById('ping-source').value;
+            const dst = document.getElementById('ping-dest').value;
+
+            if (src === dst) {
+                log("Nguồn và đích trùng nhau!", "error");
+                return;
+            }
+
+            isAnimating = true;
+            log(`-----------------------------------`);
+            log(`[ACTION] Bắt đầu Ping từ ${src} đến ${dst}`, 'action');
+
+            // Xác định vị trí thiết bị
+            const srcSw = src === 'PC1' || src === 'PC2' ? 'SW1' : 'SW2';
+            const dstSw = dst === 'PC1' || dst === 'PC2' ? 'SW1' : 'SW2';
+            
+            const srcVlan = srcSw === 'SW1' ? (src === 'PC1' ? config.sw1.p1 : config.sw1.p2) : (src === 'PC3' ? config.sw2.p1 : config.sw2.p2);
+            const dstVlan = dstSw === 'SW1' ? (dst === 'PC1' ? config.sw1.p1 : config.sw1.p2) : (dst === 'PC3' ? config.sw2.p1 : config.sw2.p2);
+
+            log(`1. ${src} gửi frame. Nó thuộc Access VLAN ${srcVlan}.`);
+            await animatePacket(src, srcSw);
+
+            // Xử lý tại Switch nguồn
+            log(`2. ${srcSw} nhận frame. Cổng Access gắn tag nội bộ VLAN ${srcVlan}.`);
+
+            // Nếu cùng Switch
+            if (srcSw === dstSw) {
+                if (srcVlan === dstVlan) {
+                    log(`3. Đích ${dst} ở cùng Switch và cùng VLAN ${dstVlan}. Forward frame ra cổng Access.`, 'success');
+                    await animatePacket(srcSw, dst);
+                    log(`Thành công! Frame đến được ${dst}.`, 'success');
+                } else {
+                    log(`3. LỖI: ${dst} thuộc VLAN ${dstVlan} khác với VLAN ${srcVlan}.`, 'error');
+                    log(`[HẬU QUẢ] Switch HỦY (Drop) frame. Các VLAN không thể nói chuyện ở Layer 2.`, 'error');
+                    await animatePacket(srcSw, dst, null, true); // Drop animation
+                }
+            } 
+            // Nếu khác Switch (Phải qua Trunk/Link)
+            else {
+                log(`3. Đích ${dst} nằm ở Switch khác. Đẩy frame qua link giữa 2 Switch.`);
+                
+                // Kiểm tra Link Mode
+                let canPass = false;
+                let isTagged = false;
+
+                if (config.link === 'trunk') {
+                    canPass = true;
+                    isTagged = true;
+                    log(`4. Link là TRUNK. Đóng gói 802.1Q tag VLAN ${srcVlan} vào frame.`);
+                } else if (config.link === `access${srcVlan}`) {
+                    canPass = true;
+                    isTagged = false;
+                    log(`4. Link là ACCESS VLAN ${srcVlan}. Frame được gửi đi KHÔNG CÓ tag (Untagged).`);
+                } else {
+                    canPass = false;
+                    log(`4. LỖI: Link là ACCESS VLAN ${config.link.replace('access','')} nhưng frame thuộc VLAN ${srcVlan}.`, 'error');
+                    log(`[HẬU QUẢ] Cấu hình sai cổng nối 2 Switch. Frame bị Drop!`, 'error');
+                }
+
+                if (!canPass) {
+                    await animatePacket(srcSw, dstSw, null, true); // Drop in transit
+                } else {
+                    // Frame đi qua Link
+                    await animatePacket(srcSw, dstSw, isTagged ? srcVlan : null);
+                    
+                    log(`5. ${dstSw} nhận frame.`);
+                    if (isTagged) {
+                        log(`6. ${dstSw} đọc 802.1Q tag, xác định frame thuộc VLAN ${srcVlan}. Gỡ bỏ tag (Strip tag).`);
+                    } else {
+                        log(`6. ${dstSw} nhận frame untagged vào cổng Access VLAN ${srcVlan}.`);
+                    }
+
+                    // Kiểm tra VLAN đích
+                    if (srcVlan === dstVlan) {
+                        log(`7. Đẩy frame ra cổng Access nối với ${dst}.`, 'success');
+                        await animatePacket(dstSw, dst);
+                        log(`Thành công! Giao tiếp xuyên Switch hoạt động.`, 'success');
+                    } else {
+                        log(`7. LỖI: ${dst} thuộc VLAN ${dstVlan}. Switch HỦY frame vì sai VLAN.`, 'error');
+                        log(`[HẬU QUẢ] Mặc dù qua được Switch 2, nhưng sai VLAN nên bị chặn ở cổng đích.`, 'error');
+                        await animatePacket(dstSw, dst, null, true);
+                    }
+                }
+            }
+            
+            isAnimating = false;
+        }
+
+        // Khởi tạo ban đầu
+        updateConfig();
+    </script>
+</body>
+</html>

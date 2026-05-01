@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mô Phỏng Cấu Hình IPv6 - Bài 1.6</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        /* Custom Scrollbar cho Terminal */
+        .terminal-scroll::-webkit-scrollbar {
+            width: 8px;
+        }
+        .terminal-scroll::-webkit-scrollbar-track {
+            background: #1a202c; 
+        }
+        .terminal-scroll::-webkit-scrollbar-thumb {
+            background: #4a5568; 
+            border-radius: 4px;
+        }
+        .blink {
+            animation: blinker 1s linear infinite;
+        }
+        @keyframes blinker {
+            50% { opacity: 0; }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 font-sans h-screen flex flex-col overflow-hidden">
+
+    <!-- Header -->
+    <header class="bg-blue-700 text-white p-4 shadow-md flex justify-between items-center shrink-0">
+        <h1 class="text-xl md:text-2xl font-bold"><i class="fa-solid fa-network-wired mr-2"></i> THE BÁO: Trình Mô Phỏng Cấu Hình IPv6</h1>
+        <div class="text-sm hidden md:block">THE BÁO: 1.6 Các loại địa chỉ và xác minh cấu hình</div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 flex flex-col lg:flex-row overflow-hidden">
+        
+        <!-- Cột trái: Lý thuyết & Topology (Sẽ cuộn được trên mobile) -->
+        <div class="w-full lg:w-5/12 bg-white flex flex-col border-r border-gray-300 overflow-y-auto">
+            
+            <!-- Phần Sơ đồ mạng -->
+            <div class="p-4 border-b border-gray-200 bg-gray-50">
+                <h2 class="font-bold text-lg mb-4 text-blue-800"><i class="fa-solid fa-sitemap mr-2"></i> Sơ đồ mạng</h2>
+                <div class="flex items-center justify-center space-x-4 md:space-x-8 bg-white p-6 rounded shadow-inner border">
+                    <!-- Router -->
+                    <div class="flex flex-col items-center">
+                        <div class="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center text-white text-2xl shadow-md border-4 border-blue-800">
+                            <i class="fa-solid fa-route"></i>
+                        </div>
+                        <span class="font-bold mt-2">Router A</span>
+                        <span class="text-xs text-gray-500">Cổng g0/0</span>
+                        <span id="topo-router-ip" class="text-xs font-mono text-blue-600 mt-1">Chưa có IP</span>
+                    </div>
+
+                    <!-- Đường link -->
+                    <div class="flex flex-col items-center w-20 md:w-32">
+                        <div id="link-line" class="h-2 w-full bg-red-500 transition-colors duration-500"></div>
+                        <span id="link-status" class="text-xs font-bold text-red-600 mt-1">DOWN (Bị tắt)</span>
+                    </div>
+
+                    <!-- PC -->
+                    <div class="flex flex-col items-center">
+                        <div class="w-16 h-16 bg-gray-700 rounded flex items-center justify-center text-white text-2xl shadow-md">
+                            <i class="fa-solid fa-desktop"></i>
+                        </div>
+                        <span class="font-bold mt-2">PC-1</span>
+                        <span class="text-xs text-gray-500">Mặc định đã cấu hình</span>
+                        <span class="text-xs font-mono text-blue-600 mt-1">2001:db8:1::10/64</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Phần Lý thuyết & Hướng dẫn -->
+            <div class="p-4 flex-1">
+                
+                <!-- Hướng dẫn sử dụng -->
+                <div class="bg-yellow-50 border-l-4 border-yellow-400 p-3 mb-4 rounded shadow-sm">
+                    <h2 class="font-bold text-sm text-yellow-800 mb-1"><i class="fa-solid fa-circle-info mr-1"></i> Cách sử dụng trình mô phỏng:</h2>
+                    <ol class="list-decimal list-inside text-sm text-gray-800 space-y-1 ml-1">
+                        <li>Nhấp chuột vào <strong>màn hình Terminal (nền đen)</strong> ở bên phải.</li>
+                        <li>Gõ các lệnh theo gợi ý ở <strong>Cheatsheet</strong>, sau đó nhấn <strong>Enter</strong> để chạy lệnh.</li>
+                        <li>Đọc các thông báo tại bảng <strong>Phân tích Cơ chế & Hậu quả</strong> để hiểu kết quả thao tác.</li>
+                        <li>Quan sát sự thay đổi trạng thái của <strong>Sơ đồ mạng</strong>.</li>
+                    </ol>
+                </div>
+
+                <div class="mb-4">
+                    <h2 class="font-bold text-lg text-blue-800 mb-2"><i class="fa-solid fa-book-open mr-2"></i> Mục tiêu thực hành</h2>
+                    <p class="text-sm mb-2">Bạn cần cấu hình cổng <strong>g0/0</strong> của Router A để PC-1 có thể kết nối được.</p>
+                    <ul class="list-disc list-inside text-sm text-gray-700 space-y-1">
+                        <li>Địa chỉ <strong>Global Unicast</strong>: <code class="bg-gray-200 px-1 rounded">2001:db8:1::1/64</code></li>
+                        <li>Địa chỉ <strong>Link-Local</strong>: <code class="bg-gray-200 px-1 rounded">fe80::1</code></li>
+                        <li>Bật cổng và kiểm tra bằng lệnh Ping.</li>
+                    </ul>
+                </div>
+
+                <div class="bg-blue-50 border-l-4 border-blue-500 p-3 mb-4 rounded">
+                    <h3 class="font-bold text-sm text-blue-800">Cheatsheet Lệnh cơ bản:</h3>
+                    <div class="grid grid-cols-1 gap-1 mt-2 text-xs font-mono text-gray-800">
+                        <p>> enable <span class="text-gray-500 italic font-sans">(Vào mode đặc quyền)</span></p>
+                        <p>> conf t <span class="text-gray-500 italic font-sans">(Vào mode cấu hình)</span></p>
+                        <p>> int g0/0 <span class="text-gray-500 italic font-sans">(Chọn cổng g0/0)</span></p>
+                        <p>> ipv6 address [IP]/[Prefix] <span class="text-gray-500 italic font-sans">(Gán IP)</span></p>
+                        <p>> ipv6 address [IP] link-local <span class="text-gray-500 italic font-sans">(Gán LLA)</span></p>
+                        <p>> no shut <span class="text-gray-500 italic font-sans">(Bật cổng)</span></p>
+                        <p>> show ipv6 int brief <span class="text-gray-500 italic font-sans">(Kiểm tra)</span></p>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Cột phải: Terminal & Analysis -->
+        <div class="w-full lg:w-7/12 bg-gray-900 flex flex-col flex-1">
+            
+            <!-- Analysis Log (Hiển thị hậu quả/giải thích) -->
+            <div class="h-32 bg-gray-800 border-b border-gray-700 p-4 shrink-0 overflow-y-auto" id="analysis-panel">
+                <h3 class="text-yellow-400 font-bold text-sm mb-1"><i class="fa-solid fa-lightbulb"></i> Phân tích Cơ chế & Hậu quả:</h3>
+                <p id="analysis-text" class="text-gray-300 text-sm">Hệ thống sẵn sàng. Hãy bắt đầu bằng cách gõ lệnh <code class="text-green-400">enable</code> trong terminal bên dưới để bắt đầu cấu hình.</p>
+            </div>
+
+            <!-- CLI Terminal -->
+            <div class="flex-1 p-4 font-mono text-sm text-green-400 terminal-scroll overflow-y-auto" id="terminal-container" onclick="document.getElementById('cli-input').focus()">
+                <div id="terminal-output" class="whitespace-pre-wrap">Cisco IOS Software, C1900 Software (C1900-UNIVERSALK9-M), Version 15.2(4)M1
+Copyright (c) 1986-2014 by Cisco Systems, Inc.
+Đã khởi động Router mô phỏng...
+</div>
+                <div class="flex mt-1">
+                    <span id="cli-prompt">Router></span>
+                    <input type="text" id="cli-input" class="flex-1 bg-transparent border-none outline-none text-green-400 ml-2" autocomplete="off" spellcheck="false" autofocus>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <script>
+        // --- Trạng thái Mô phỏng (State) ---
+        const state = {
+            mode: 'user', // user, priv, conf, iface
+            interfaces: {
+                'g0/0': {
+                    status: 'down', // up, administratively down
+                    gua: null,      // Global Unicast
+                    lla: 'FE80::201:64FF:FE23:4567', // Auto generated Link-Local
+                }
+            },
+            pc: {
+                ip: '2001:db8:1::10',
+                network: '2001:db8:1::'
+            }
+        };
+
+        // --- DOM Elements ---
+        const terminalOutput = document.getElementById('terminal-output');
+        const cliInput = document.getElementById('cli-input');
+        const cliPrompt = document.getElementById('cli-prompt');
+        const terminalContainer = document.getElementById('terminal-container');
+        const analysisText = document.getElementById('analysis-text');
+        
+        // Sơ đồ mạng Elements
+        const linkLine = document.getElementById('link-line');
+        const linkStatus = document.getElementById('link-status');
+        const topoRouterIp = document.getElementById('topo-router-ip');
+
+        // --- Helper: Cập nhật Analysis ---
+        function updateAnalysis(msg, type = 'info') {
+            const colors = {
+                'error': 'text-red-400',
+                'success': 'text-green-400',
+                'info': 'text-blue-300',
+                'warning': 'text-yellow-400'
+            };
+            analysisText.innerHTML = `<span class="${colors[type]}">${msg}</span>`;
+            // Flash effect on panel
+            const panel = document.getElementById('analysis-panel');
+            panel.classList.add('bg-gray-700');
+            setTimeout(() => panel.classList.remove('bg-gray-700'), 200);
+        }
+
+        // --- Helper: In ra Terminal ---
+        function printTerm(text) {
+            terminalOutput.textContent += text + '\n';
+            terminalContainer.scrollTop = terminalContainer.scrollHeight;
+        }
+
+        // --- Helper: Lấy Prompt hiện tại ---
+        function getPrompt() {
+            switch(state.mode) {
+                case 'user': return 'Router>';
+                case 'priv': return 'Router#';
+                case 'conf': return 'Router(config)#';
+                case 'iface': return 'Router(config-if)#';
+                default: return 'Router>';
+            }
+        }
+
+        // --- Cập nhật giao diện Topology ---
+        function updateTopologyUI() {
+            const intf = state.interfaces['g0/0'];
+            
+            // Cập nhật trạng thái link
+            if (intf.status === 'up') {
+                linkLine.className = 'h-2 w-full bg-green-500 transition-colors duration-500';
+                linkStatus.textContent = 'UP (Đã bật)';
+                linkStatus.className = 'text-xs font-bold text-green-600 mt-1';
+            } else {
+                linkLine.className = 'h-2 w-full bg-red-500 transition-colors duration-500';
+                linkStatus.textContent = 'DOWN (Bị tắt)';
+                linkStatus.className = 'text-xs font-bold text-red-600 mt-1';
+            }
+
+            // Cập nhật IP hiển thị trên Router
+            if (intf.gua) {
+                topoRouterIp.textContent = intf.gua;
+            } else {
+                topoRouterIp.textContent = 'Chưa cấu hình GUA';
+            }
+        }
+
+        // --- Xử lý Logic Lệnh CLI ---
+        function processCommand(rawCmd) {
+            const cmd = rawCmd.trim().toLowerCase();
+            if (!cmd) return;
+
+            // In lệnh người dùng đã gõ
+            printTerm(getPrompt() + ' ' + rawCmd);
+
+            // Tách từ khóa
+            const args = cmd.split(/\s+/);
+
+            // --- Lệnh chuyển đổi Mode ---
+            if (cmd === 'enable' || cmd === 'en') {
+                if (state.mode === 'user') {
+                    state.mode = 'priv';
+                    updateAnalysis("Chuyển sang chế độ Đặc quyền (Privileged EXEC Mode). Tại đây bạn có thể dùng lệnh show và ping.", "info");
+                }
+                return;
+            }
+            if (cmd === 'disable') {
+                state.mode = 'user';
+                return;
+            }
+            if ((cmd === 'configure terminal' || cmd === 'conf t') && state.mode === 'priv') {
+                state.mode = 'conf';
+                printTerm("Enter configuration commands, one per line.  End with CNTL/Z.");
+                updateAnalysis("Chuyển sang chế độ Cấu hình toàn cục (Global Configuration).", "info");
+                return;
+            }
+            if ((cmd === 'interface g0/0' || cmd === 'int g0/0') && state.mode === 'conf') {
+                state.mode = 'iface';
+                updateAnalysis("Đã vào chế độ cấu hình Cổng GigabitEthernet0/0. Bạn có thể gán địa chỉ IPv6 tại đây.", "info");
+                return;
+            }
+            if (cmd === 'exit') {
+                if (state.mode === 'iface') {
+                    state.mode = 'conf';
+                    updateAnalysis("Thoát chế độ cấu hình cổng.", "info");
+                } else if (state.mode === 'conf') {
+                    state.mode = 'priv';
+                    printTerm("%SYS-5-CONFIG_I: Configured from console by console");
+                    updateAnalysis("Thoát chế độ cấu hình toàn cục.", "info");
+                } else if (state.mode === 'priv') {
+                    state.mode = 'user';
+                }
+                return;
+            }
+
+            // --- Lệnh trong Interface Mode ---
+            if (state.mode === 'iface') {
+                // Lệnh NO SHUTDOWN
+                if (cmd === 'no shutdown' || cmd === 'no shut') {
+                    state.interfaces['g0/0'].status = 'up';
+                    printTerm("\n%LINK-3-UPDOWN: Interface GigabitEthernet0/0, changed state to up");
+                    printTerm("%LINEPROTO-5-UPDOWN: Line protocol on Interface GigabitEthernet0/0, changed state to up");
+                    updateAnalysis("Thành công: Cổng đã được bật lên (UP). Trong IPv6, Link-Local sẽ hoạt động ngay lập tức kể cả khi bạn chưa gán Global IP.", "success");
+                    updateTopologyUI();
+                    return;
+                }
+                if (cmd === 'shutdown' || cmd === 'shut') {
+                    state.interfaces['g0/0'].status = 'down';
+                    printTerm("\n%LINK-5-CHANGED: Interface GigabitEthernet0/0, changed state to administratively down");
+                    updateAnalysis("Cổng đã bị tắt (Administratively down). Mọi giao tiếp qua cổng này sẽ bị ngắt.", "warning");
+                    updateTopologyUI();
+                    return;
+                }
+
+                // Lệnh IPV6 ADDRESS
+                if (args[0] === 'ipv6' && (args[1] === 'address' || args[1] === 'add')) {
+                    const ipArg = args[2];
+                    const isLinkLocal = args[3] === 'link-local';
+
+                    if (!ipArg) {
+                        printTerm("% Incomplete command.");
+                        return;
+                    }
+
+                    // Mô phỏng bắt lỗi: Kiểm tra định dạng cơ bản IPv6
+                    if (!ipArg.includes(':')) {
+                        printTerm("% Invalid input detected at '^' marker.");
+                        updateAnalysis(`LỖI: '${ipArg}' không phải IPv6. Đặc điểm của IPv6 là dùng dấu hai chấm (:) để phân cách các nhóm Hexa. Cấu trúc IPv4 không hoạt động ở đây!`, "error");
+                        return;
+                    }
+
+                    if (isLinkLocal) {
+                        // Cấu hình Link Local
+                        if (!ipArg.toLowerCase().startsWith('fe80')) {
+                            printTerm("% Invalid link-local address.");
+                            updateAnalysis("LỖI: Địa chỉ Link-Local chuẩn BẮT BUỘC phải bắt đầu bằng FE80::/10. Bạn đã nhập sai dải mạng.", "error");
+                        } else {
+                            state.interfaces['g0/0'].lla = ipArg.toUpperCase();
+                            updateAnalysis(`Thành công: Đã gán địa chỉ Link-Local tĩnh (${ipArg.toUpperCase()}). Địa chỉ này chỉ dùng để giao tiếp trực tiếp với thiết bị cắm chung một cáp (cùng LAN).`, "success");
+                        }
+                    } else {
+                        // Cấu hình Global Unicast
+                        if (!ipArg.includes('/')) {
+                            printTerm("% Incomplete command (Missing prefix).");
+                            updateAnalysis("HẬU QUẢ: Bạn quên thêm Prefix Length (Ví dụ: /64). Trong IPv6, prefix cực kỳ quan trọng để chia mạng, thay thế cho Subnet Mask của IPv4.", "error");
+                            return;
+                        }
+
+                        // Parse đơn giản
+                        const parts = ipArg.split('/');
+                        const prefix = parseInt(parts[1]);
+
+                        if (isNaN(prefix) || prefix < 0 || prefix > 128) {
+                            printTerm("% Invalid prefix format.");
+                            return;
+                        }
+
+                        state.interfaces['g0/0'].gua = ipArg.toLowerCase();
+                        updateAnalysis(`Thành công: Đã gán Global Unicast Address (GUA) là ${ipArg}. GUA tương đương với IP Public trong IPv4, dùng để định tuyến toàn cầu.`, "success");
+                        updateTopologyUI();
+                    }
+                    return;
+                }
+            }
+
+            // --- Lệnh kiểm tra trong Privileged Mode (Hoặc mọi Mode qua "do" - simplified) ---
+            let testCmd = cmd;
+            if (cmd.startsWith('do ')) {
+                testCmd = cmd.substring(3); // Xóa chữ 'do '
+            }
+
+            if (state.mode === 'priv' || cmd.startsWith('do ')) {
+                
+                // SHOW IPV6 INTERFACE BRIEF
+                if (testCmd === 'show ipv6 interface brief' || testCmd === 'sh ipv6 int brief' || testCmd === 'show ipv6 int br') {
+                    const intf = state.interfaces['g0/0'];
+                    const statusStr = intf.status === 'up' ? 'up' : 'administratively down';
+                    const protoStr = intf.status === 'up' ? 'up' : 'down';
+                    
+                    let out = `GigabitEthernet0/0     [${statusStr}/${protoStr}]\n`;
+                    out += `    ${intf.lla}\n`;
+                    if (intf.gua) {
+                        out += `    ${intf.gua}\n`;
+                    }
+                    printTerm(out);
+                    
+                    updateAnalysis("Lệnh show xác minh cấu hình. Chú ý: Một cổng IPv6 CÓ THỂ có nhiều địa chỉ IP cùng lúc (1 Link-local bắt buộc và 1 hoặc nhiều Global Unicast).", "info");
+                    return;
+                }
+
+                // PING
+                if (testCmd.startsWith('ping ')) {
+                    const targetIp = testCmd.split(' ')[1];
+                    if (!targetIp) {
+                        printTerm("% Incomplete command.");
+                        return;
+                    }
+
+                    printTerm(`Type escape sequence to abort.\nSending 5, 100-byte ICMP Echos to ${targetIp}, timeout is 2 seconds:`);
+                    
+                    // Logic xử lý Ping
+                    setTimeout(() => {
+                        const intf = state.interfaces['g0/0'];
+                        
+                        // Nếu cổng đang tắt
+                        if (intf.status === 'down') {
+                            printTerm(".....\nSuccess rate is 0 percent (0/5)");
+                            updateAnalysis("PING THẤT BẠI: Bạn đã quên bật cổng bằng lệnh 'no shutdown'. Tuyến đường vật lý bị ngắt.", "error");
+                            return;
+                        }
+
+                        // Nếu không có IP
+                        if (!intf.gua) {
+                            printTerm(".....\nSuccess rate is 0 percent (0/5)");
+                            updateAnalysis("PING THẤT BẠI: Cổng GigabitEthernet0/0 chưa được cấu hình địa chỉ Global Unicast để giao tiếp ra khỏi mạng nội bộ.", "error");
+                            return;
+                        }
+
+                        // Kiểm tra Subnet (Mô phỏng đơn giản)
+                        // Target PC là 2001:db8:1::10
+                        // Xem router có chứa mạng 2001:db8:1:: không
+                        if (intf.gua.includes('2001:db8:1::') || intf.gua.includes('2001:db8:1:0:')) {
+                            // Thành công
+                            printTerm("!!!!!\nSuccess rate is 100 percent (5/5), round-trip min/avg/max = 1/2/4 ms");
+                            updateAnalysis("PING THÀNH CÔNG! Bạn đã cấu hình đúng địa chỉ IP cùng dải mạng (/64) với PC và bật cổng. Cơ chế định tuyến IPv6 đã hoạt động.", "success");
+                        } else {
+                            // Sai subnet
+                            printTerm(".....\nSuccess rate is 0 percent (0/5)");
+                            updateAnalysis(`PING THẤT BẠI: Định tuyến sai mạng (Wrong Subnet). Router có IP ${intf.gua} không cùng dải mạng /64 với PC (${state.pc.ip}). Hãy cấu hình lại đúng IP được yêu cầu!`, "error");
+                        }
+
+                    }, 1000);
+                    return;
+                }
+            }
+
+            // Fallback lỗi chung
+            printTerm(`% Invalid input detected or command not supported in simulation.`);
+        }
+
+        // --- Xử lý Sự kiện Nhập liệu ---
+        cliInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                const cmd = this.value;
+                this.value = '';
+                processCommand(cmd);
+                cliPrompt.textContent = getPrompt();
+            }
+        });
+
+        // Focus mặc định khi click vào body (trừ khi đang bôi đen text)
+        document.addEventListener('click', (e) => {
+            if (window.getSelection().toString().length === 0) {
+               // cliInput.focus();
+            }
+        });
+
+    </script>
+</body>
+</html>

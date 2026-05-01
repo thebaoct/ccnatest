@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Trình Mô Phỏng Kiến Trúc Mạng</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Tùy chỉnh thanh cuộn */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #1e293b; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+        
+        .glow { filter: drop-shadow(0 0 6px #3b82f6); }
+        .glow-red { filter: drop-shadow(0 0 8px #ef4444); }
+        
+        @keyframes pulse-fast {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .animate-pulse-fast { animation: pulse-fast 1s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+
+        /* Vô hiệu hóa bôi đen text trong SVG */
+        svg text { user-select: none; pointer-events: none; }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-200 font-sans h-screen flex flex-col overflow-hidden">
+
+    <!-- HEADER -->
+    <header class="bg-slate-800 border-b border-slate-700 p-3 md:p-4 flex flex-col md:flex-row justify-between items-center shadow-md z-20 shrink-0 gap-3">
+        <div class="text-center md:text-left">
+            <h1 class="text-xl md:text-2xl font-bold text-blue-400">THE BÁO: Trình Mô Phỏng Mạng</h1>
+            <p class="text-xs md:text-sm text-slate-400 hidden md:block">Khám phá cơ chế, điểm nghẽn và tính sẵn sàng</p>
+        </div>
+        <button onclick="sendRandomTraffic()" class="w-full md:w-auto bg-blue-600 hover:bg-blue-500 text-white px-6 py-2.5 rounded-lg font-semibold shadow-lg shadow-blue-500/30 transition-all flex items-center justify-center gap-2 active:scale-95">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+            Gửi Dữ Liệu (Ping)
+        </button>
+    </header>
+
+    <div class="flex flex-1 flex-col md:flex-row overflow-hidden relative">
+        
+        <!-- SIDEBAR (Ngang trên Mobile, Dọc trên Desktop) -->
+        <div class="md:w-64 bg-slate-800 border-b md:border-b-0 md:border-r border-slate-700 p-2 md:p-4 flex flex-row md:flex-col gap-2 overflow-x-auto md:overflow-y-auto shrink-0 z-10">
+            <h2 class="text-slate-400 uppercase text-xs font-bold tracking-wider mb-1 hidden md:block">Chọn Mô Hình</h2>
+            <div id="topo-buttons" class="flex md:flex-col gap-2">
+                <!-- Buttons sinh bằng JS -->
+            </div>
+            
+            <div class="mt-4 hidden md:block border-t border-slate-700 pt-4">
+                <h2 class="text-slate-400 uppercase text-xs font-bold tracking-wider mb-2">Trạng thái thiết bị</h2>
+                <div class="flex items-center gap-2 text-sm text-slate-300 mb-2">
+                    <div class="w-3 h-3 rounded-full bg-blue-500"></div> Hoạt động
+                </div>
+                <div class="flex items-center gap-2 text-sm text-slate-300 mb-2">
+                    <div class="w-3 h-3 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]"></div> Đang Lỗi / Tắt
+                </div>
+                <div class="mt-4 p-3 bg-blue-900/30 border border-blue-800/50 rounded text-xs text-blue-200">
+                    💡 <b>Chaos Monkey:</b> Nhấp vào thiết bị trên sơ đồ để tắt/bật mô phỏng sự cố.
+                </div>
+            </div>
+        </div>
+
+        <!-- MAIN CONTENT AREA -->
+        <div class="flex-1 flex flex-col relative overflow-hidden">
+            
+            <!-- CANVAS (SVG Sơ đồ) -->
+            <div class="flex-1 relative bg-slate-950 overflow-hidden min-h-[50vh] md:min-h-0 touch-pan-y md:touch-none">
+                <!-- SVG tự động scale tỷ lệ nhờ viewBox -->
+                <svg id="network-svg" class="w-full h-full" viewBox="0 0 1000 500" preserveAspectRatio="xMidYMid meet">
+                    <defs>
+                        <!-- Biểu tượng Router -->
+                        <g id="icon-router" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <path d="M12 8v8M8 12h8M10 10l2-2 2 2M10 14l2 2 2-2"></path>
+                        </g>
+                        <!-- Biểu tượng Switch -->
+                        <g id="icon-switch" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none">
+                            <rect x="2" y="6" width="20" height="12" rx="2"></rect>
+                            <path d="M6 10h12M6 14h12M14 8l2 2-2 2M10 16l-2-2 2-2"></path>
+                        </g>
+                        <!-- Biểu tượng PC -->
+                        <g id="icon-pc" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none">
+                            <rect x="2" y="3" width="20" height="14" rx="2"></rect>
+                            <path d="M8 21h8M12 17v4"></path>
+                        </g>
+                        <!-- Biểu tượng Server -->
+                        <g id="icon-server" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none">
+                            <rect x="2" y="2" width="20" height="8" rx="2"></rect>
+                            <rect x="2" y="14" width="20" height="8" rx="2"></rect>
+                            <path d="M6 6h.01M6 18h.01"></path>
+                        </g>
+                        <!-- Biểu tượng Cloud -->
+                        <g id="icon-cloud" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none">
+                            <path d="M17.5 19c2.485 0 4.5-2.015 4.5-4.5 0-2.313-1.75-4.225-4-4.456C17.487 5.86 13.922 3 9.5 3 4.806 3 1 6.806 1 11.5c0 .248.01.493.031.734C2.569 12.637 4 14.168 4 16c0 1.657-1.343 3-3 3h16.5z"></path>
+                        </g>
+                    </defs>
+
+                    <!-- Lớp Liên kết -->
+                    <g id="layer-links"></g>
+                    <!-- Lớp Thiết bị -->
+                    <g id="layer-nodes"></g>
+                    <!-- Lớp Dữ liệu (Packets) -->
+                    <g id="layer-packets"></g>
+                </svg>
+            </div>
+
+            <!-- BOTTOM PANEL (Thông tin & Log) -->
+            <div class="h-auto md:h-48 bg-slate-800 border-t border-slate-700 p-3 md:p-4 shrink-0 flex flex-col md:flex-row gap-4 overflow-y-auto">
+                <div class="flex-1">
+                    <h3 id="info-title" class="text-base md:text-lg font-bold text-blue-300 mb-1"></h3>
+                    <p id="info-desc" class="text-slate-300 text-xs md:text-sm leading-relaxed mb-2"></p>
+                    <div class="bg-amber-900/30 border border-amber-700/50 p-2 rounded text-xs md:text-sm text-amber-200 flex gap-2 items-start">
+                        <span>🔬</span>
+                        <p><b class="block md:inline">Thử nghiệm:</b> <span id="info-exp"></span></p>
+                    </div>
+                </div>
+                
+                <!-- LOG TERMINAL -->
+                <div class="w-full md:w-1/3 h-32 md:h-auto bg-slate-950 rounded border border-slate-700 flex flex-col shrink-0">
+                    <div class="bg-slate-800 text-[10px] md:text-xs font-bold px-3 py-1 border-b border-slate-700 text-slate-400">CONSOLE LOG</div>
+                    <div id="log-container" class="flex-1 overflow-y-auto p-2 font-mono text-[10px] md:text-xs flex flex-col-reverse">
+                        <!-- Logs sinh bằng JS -->
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+<script>
+// --- DỮ LIỆU CÁC MÔ HÌNH (TOPOLOGIES) ---
+const TOPOLOGIES = {
+  soho: {
+    name: "Mô hình SOHO (Home Office)",
+    desc: "Sử dụng cho văn phòng nhỏ hoặc gia đình. Tất cả thiết bị kết nối vào một Router duy nhất. Đơn giản, rẻ tiền nhưng có điểm chết duy nhất.",
+    experiment: "Nhấp vào Router trung tâm để Tắt. Gửi dữ liệu và xem toàn bộ mạng sẽ tê liệt vì không có đường đi dự phòng.",
+    nodes: [
+      { id: "isp", type: "cloud", label: "Internet", x: 500, y: 80 },
+      { id: "router", type: "router", label: "Router WiFi", x: 500, y: 200 },
+      { id: "pc1", type: "pc", label: "PC Kế toán", x: 300, y: 380, isEnd: true },
+      { id: "pc2", type: "pc", label: "Laptop GĐ", x: 500, y: 380, isEnd: true },
+      { id: "printer", type: "server", label: "Máy in", x: 700, y: 380, isEnd: true },
+    ],
+    links: [
+      { source: "isp", target: "router" },
+      { source: "router", target: "pc1" },
+      { source: "router", target: "pc2" },
+      { source: "router", target: "printer" }
+    ]
+  },
+  tier2: {
+    name: "Mô hình 2 Lớp (Collapsed Core)",
+    desc: "Gộp lớp Core (Lõi) và Distribution (Phân phối) thành một. Phù hợp doanh nghiệp vừa. Có khả năng dự phòng (Redundancy) tốt hơn SOHO.",
+    experiment: "Thử tắt 1 Core Switch (nhấp vào nó). Dữ liệu sẽ tự tìm đường đi qua Core còn lại. Mạng vẫn sống!",
+    nodes: [
+      { id: "core1", type: "switch", label: "Core 1", x: 350, y: 100 },
+      { id: "core2", type: "switch", label: "Core 2", x: 650, y: 100 },
+      { id: "acc1", type: "switch", label: "Access 1", x: 200, y: 280 },
+      { id: "acc2", type: "switch", label: "Access 2", x: 500, y: 280 },
+      { id: "acc3", type: "switch", label: "Access 3", x: 800, y: 280 },
+      { id: "pc1", type: "pc", label: "Phòng IT", x: 200, y: 420, isEnd: true },
+      { id: "pc2", type: "pc", label: "Phòng Sales", x: 500, y: 420, isEnd: true },
+      { id: "pc3", type: "pc", label: "Phòng HR", x: 800, y: 420, isEnd: true },
+    ],
+    links: [
+      { source: "core1", target: "core2" },
+      { source: "core1", target: "acc1" }, { source: "core1", target: "acc2" }, { source: "core1", target: "acc3" },
+      { source: "core2", target: "acc1" }, { source: "core2", target: "acc2" }, { source: "core2", target: "acc3" },
+      { source: "acc1", target: "pc1" }, { source: "acc2", target: "pc2" }, { source: "acc3", target: "pc3" }
+    ]
+  },
+  tier3: {
+    name: "Mô hình 3 Lớp (Hierarchical)",
+    desc: "Chia 3 lớp: Core (chuyển mạch nhanh), Distribution (định tuyến), Access (người dùng). Rất dễ mở rộng và độ ổn định cao nhất.",
+    experiment: "Tắt Distribution 1, lưu lượng sẽ tự động chuyển hướng sang Distribution 2 mà người dùng không bị gián đoạn.",
+    nodes: [
+      { id: "core1", type: "switch", label: "Core 1", x: 350, y: 60 },
+      { id: "core2", type: "switch", label: "Core 2", x: 650, y: 60 },
+      { id: "dist1", type: "switch", label: "Dist 1", x: 350, y: 180 },
+      { id: "dist2", type: "switch", label: "Dist 2", x: 650, y: 180 },
+      { id: "acc1", type: "switch", label: "Access 1", x: 200, y: 320 },
+      { id: "acc2", type: "switch", label: "Access 2", x: 500, y: 320 },
+      { id: "acc3", type: "switch", label: "Access 3", x: 800, y: 320 },
+      { id: "pc1", type: "pc", label: "PC A", x: 200, y: 440, isEnd: true },
+      { id: "pc2", type: "pc", label: "PC B", x: 500, y: 440, isEnd: true },
+      { id: "pc3", type: "pc", label: "PC C", x: 800, y: 440, isEnd: true },
+    ],
+    links: [
+      { source: "core1", target: "core2" },
+      { source: "core1", target: "dist1" }, { source: "core1", target: "dist2" },
+      { source: "core2", target: "dist1" }, { source: "core2", target: "dist2" },
+      { source: "dist1", target: "acc1" }, { source: "dist1", target: "acc2" },
+      { source: "dist2", target: "acc2" }, { source: "dist2", target: "acc3" },
+      { source: "acc1", target: "pc1" }, { source: "acc2", target: "pc2" }, { source: "acc3", target: "pc3" }
+    ]
+  },
+  spineLeaf: {
+    name: "Spine-Leaf (Data Center)",
+    desc: "Mọi Leaf đều kết nối với mọi Spine. Tối ưu cho Data Center vì mọi Server cách nhau đúng 1 bước nhảy (1 hop), độ trễ cực thấp.",
+    experiment: "Gửi Ping liên tục, bạn sẽ thấy dữ liệu đi luân phiên qua các Spine khác nhau để cân bằng tải.",
+    nodes: [
+      { id: "spine1", type: "router", label: "Spine 1", x: 250, y: 100 },
+      { id: "spine2", type: "router", label: "Spine 2", x: 500, y: 100 },
+      { id: "spine3", type: "router", label: "Spine 3", x: 750, y: 100 },
+      { id: "leaf1", type: "switch", label: "Leaf 1", x: 150, y: 280 },
+      { id: "leaf2", type: "switch", label: "Leaf 2", x: 380, y: 280 },
+      { id: "leaf3", type: "switch", label: "Leaf 3", x: 620, y: 280 },
+      { id: "leaf4", type: "switch", label: "Leaf 4", x: 850, y: 280 },
+      { id: "srv1", type: "server", label: "Srv 1", x: 150, y: 420, isEnd: true },
+      { id: "srv2", type: "server", label: "Srv 2", x: 380, y: 420, isEnd: true },
+      { id: "srv3", type: "server", label: "Srv 3", x: 620, y: 420, isEnd: true },
+      { id: "srv4", type: "server", label: "Srv 4", x: 850, y: 420, isEnd: true },
+    ],
+    links: [
+      { source: "spine1", target: "leaf1" }, { source: "spine1", target: "leaf2" }, { source: "spine1", target: "leaf3" }, { source: "spine1", target: "leaf4" },
+      { source: "spine2", target: "leaf1" }, { source: "spine2", target: "leaf2" }, { source: "spine2", target: "leaf3" }, { source: "spine2", target: "leaf4" },
+      { source: "spine3", target: "leaf1" }, { source: "spine3", target: "leaf2" }, { source: "spine3", target: "leaf3" }, { source: "spine3", target: "leaf4" },
+      { source: "leaf1", target: "srv1" }, { source: "leaf2", target: "srv2" }, { source: "leaf3", target: "srv3" }, { source: "leaf4", target: "srv4" }
+    ]
+  },
+  wan: {
+    name: "Mô hình WAN",
+    desc: "Kết nối mạng LAN ở Trụ sở và Chi nhánh cách xa nhau qua nhà cung cấp (ISP).",
+    experiment: "Thử tắt Router Chi Nhánh. Mạng WAN đứt, Chi nhánh sẽ hoàn toàn mất kết nối với Trụ sở (dữ liệu bị rớt).",
+    nodes: [
+      { id: "hq_pc", type: "pc", label: "PC Trụ Sở", x: 100, y: 250, isEnd: true },
+      { id: "hq_sw", type: "switch", label: "SW Trụ Sở", x: 250, y: 250 },
+      { id: "hq_rt", type: "router", label: "RT Trụ Sở", x: 400, y: 250 },
+      { id: "isp", type: "cloud", label: "Mạng ISP", x: 550, y: 120 },
+      { id: "br_rt", type: "router", label: "RT Chi Nhánh", x: 700, y: 250 },
+      { id: "br_sw", type: "switch", label: "SW CN", x: 820, y: 250 },
+      { id: "br_pc", type: "pc", label: "PC CN", x: 920, y: 250, isEnd: true },
+    ],
+    links: [
+      { source: "hq_pc", target: "hq_sw" }, { source: "hq_sw", target: "hq_rt" },
+      { source: "hq_rt", target: "isp" }, { source: "isp", target: "br_rt" },
+      { source: "br_rt", target: "br_sw" }, { source: "br_sw", target: "br_pc" }
+    ]
+  }
+};
+
+// --- QUẢN LÝ TRẠNG THÁI (STATE) ---
+let currentTopo = 'tier3';
+let nodes = [];
+let links = [];
+let packets = [];
+let logs = [];
+
+// Các Element DOM
+const elTopoButtons = document.getElementById('topo-buttons');
+const elTitle = document.getElementById('info-title');
+const elDesc = document.getElementById('info-desc');
+const elExp = document.getElementById('info-exp');
+const elLog = document.getElementById('log-container');
+const elLayerNodes = document.getElementById('layer-nodes');
+const elLayerLinks = document.getElementById('layer-links');
+const elLayerPackets = document.getElementById('layer-packets');
+
+// --- HÀM KHỞI TẠO & RENDER ---
+function init() {
+    renderSidebar();
+    loadTopology(currentTopo);
+    requestAnimationFrame(animationLoop);
+}
+
+function renderSidebar() {
+    elTopoButtons.innerHTML = '';
+    Object.entries(TOPOLOGIES).forEach(([key, topo]) => {
+        const btn = document.createElement('button');
+        btn.className = `text-left px-3 py-2 md:p-3 rounded-lg border text-sm md:text-base whitespace-nowrap transition-all ${currentTopo === key ? 'bg-blue-900/50 border-blue-500 text-white' : 'border-transparent bg-slate-800 hover:bg-slate-700 text-slate-300'}`;
+        btn.textContent = topo.name;
+        btn.onclick = () => loadTopology(key);
+        elTopoButtons.appendChild(btn);
+    });
+}
+
+function loadTopology(key) {
+    currentTopo = key;
+    const topo = TOPOLOGIES[key];
+    
+    nodes = topo.nodes.map(n => ({ ...n, status: 'active' }));
+    links = topo.links;
+    packets = [];
+    
+    // Cập nhật giao diện
+    renderSidebar(); 
+    elTitle.textContent = topo.name;
+    elDesc.textContent = topo.desc;
+    elExp.textContent = topo.experiment;
+    
+    addLog(`Đã tải: ${topo.name}`, 'info');
+    drawNetwork();
+}
+
+function addLog(msg, type = 'normal') {
+    const time = new Date().toLocaleTimeString();
+    logs.push({ msg, type, time });
+    if (logs.length > 20) logs.shift(); // Giữ tối đa 20 log
+    
+    elLog.innerHTML = logs.slice().reverse().map(log => {
+        const colorClass = log.type === 'error' ? 'text-red-400' : 
+                           log.type === 'success' ? 'text-green-400' : 
+                           log.type === 'info' ? 'text-blue-300' : 'text-slate-400';
+        return `<div class="mb-1 ${colorClass}"><span class="text-slate-600">[${log.time}]</span> ${log.msg}</div>`;
+    }).join('');
+}
+
+// Bật/tắt thiết bị
+function toggleNode(nodeId) {
+    const node = nodes.find(n => n.id === nodeId);
+    if (!node) return;
+    
+    node.status = node.status === 'active' ? 'down' : 'active';
+    addLog(`Thiết bị ${node.label} bị ${node.status === 'down' ? 'TẮT (Sự cố)' : 'BẬT (Khôi phục)'}`, node.status === 'down' ? 'error' : 'success');
+    drawNetwork();
+}
+
+// --- VẼ SƠ ĐỒ (SVG) ---
+function drawNetwork() {
+    // 1. Vẽ Liên kết (Links)
+    elLayerLinks.innerHTML = links.map(link => {
+        const n1 = nodes.find(n => n.id === link.source);
+        const n2 = nodes.find(n => n.id === link.target);
+        if (!n1 || !n2) return '';
+        const isDown = n1.status === 'down' || n2.status === 'down';
+        
+        return `<line x1="${n1.x}" y1="${n1.y}" x2="${n2.x}" y2="${n2.y}" 
+                      stroke="${isDown ? '#7f1d1d' : '#334155'}" 
+                      stroke-width="${isDown ? '2' : '4'}" 
+                      stroke-dasharray="${isDown ? '5,5' : '0'}"
+                      class="transition-all duration-300" />`;
+    }).join('');
+
+    // 2. Vẽ Thiết bị (Nodes)
+    elLayerNodes.innerHTML = nodes.map(node => {
+        const isDown = node.status === 'down';
+        const color = isDown ? '#7f1d1d' : '#1e293b';
+        const strokeColor = isDown ? '#ef4444' : '#475569';
+        const iconClass = node.type === 'cloud' ? 'w-10 h-10' : 'w-8 h-8';
+        
+        // Căn chỉnh icon bên trong hộp
+        const iconTranslate = node.type === 'cloud' ? 'translate(-16, -16) scale(1.3)' : 'translate(-12, -12)';
+
+        return `
+        <g transform="translate(${node.x}, ${node.y})" class="cursor-pointer transition-all hover:scale-110" onclick="toggleNode('${node.id}')" style="${isDown ? 'opacity: 0.6; filter: grayscale(1);' : ''}">
+            <!-- Box bọc ngoài -->
+            <rect x="-24" y="-24" width="48" height="48" rx="8" fill="${color}" stroke="${strokeColor}" stroke-width="2" class="${!isDown ? 'hover:stroke-blue-400' : ''}" />
+            
+            <!-- Icon -->
+            <g transform="${iconTranslate} text-slate-200">
+                <use href="#icon-${node.type}"></use>
+            </g>
+
+            <!-- Dấu X Đỏ khi sập -->
+            ${isDown ? `<circle cx="20" cy="-20" r="10" fill="#ef4444" /><text x="20" y="-16" text-anchor="middle" font-size="12" font-weight="bold" fill="white">X</text>` : ''}
+            
+            <!-- Nhãn (Label) -->
+            <rect x="-35" y="32" width="70" height="22" rx="4" fill="rgba(15, 23, 42, 0.8)"></rect>
+            <text y="47" text-anchor="middle" class="text-xs font-semibold ${isDown ? 'fill-red-400' : 'fill-slate-300'}">${node.label}</text>
+        </g>
+        `;
+    }).join('');
+}
+
+// --- THUẬT TOÁN MẠNG ---
+// Tìm đường ngắn nhất (BFS) chỉ qua các thiết bị 'active'
+function findPath(startId, endId) {
+    const activeNodes = new Set(nodes.filter(n => n.status === 'active').map(n => n.id));
+    if (!activeNodes.has(startId) || !activeNodes.has(endId)) return null;
+
+    const adj = {};
+    activeNodes.forEach(id => adj[id] = []);
+    links.forEach(l => {
+      if (activeNodes.has(l.source) && activeNodes.has(l.target)) {
+        adj[l.source].push(l.target);
+        adj[l.target].push(l.source);
+      }
+    });
+
+    const queue = [[startId]];
+    const visited = new Set([startId]);
+
+    // Spine-Leaf có nhiều đường đi bằng nhau -> Xáo trộn ngẫu nhiên để thấy cân bằng tải
+    if (currentTopo === 'spineLeaf') {
+        for(let key in adj) { adj[key].sort(() => Math.random() - 0.5); }
+    }
+
+    while (queue.length > 0) {
+      const path = queue.shift();
+      const node = path[path.length - 1];
+      if (node === endId) return path;
+
+      for (let neighbor of adj[node]) {
+        if (!visited.has(neighbor)) {
+          visited.add(neighbor);
+          queue.push([...path, neighbor]);
+        }
+      }
+    }
+    return null;
+}
+
+function sendRandomTraffic() {
+    const endDevices = nodes.filter(n => n.isEnd);
+    if (endDevices.length < 2) return;
+    
+    // Chọn 2 máy ngẫu nhiên
+    const shuffled = [...endDevices].sort(() => 0.5 - Math.random());
+    const source = shuffled[0];
+    const target = shuffled[1];
+
+    addLog(`Đang gửi dữ liệu từ ${source.label} đến ${target.label}...`, 'info');
+
+    if (source.status === 'down' || target.status === 'down') {
+        addLog(`❌ Thất bại: Máy nguồn hoặc đích đang tắt!`, 'error');
+        return;
+    }
+
+    const pathIds = findPath(source.id, target.id);
+    
+    if (pathIds) {
+      packets.push({
+        id: Date.now() + Math.random(),
+        pathIds: pathIds,
+        segmentIndex: 0,
+        progress: 0,
+        status: 'moving' // 'moving', 'arrived', 'dropped', 'removing'
+      });
+    } else {
+      addLog(`❌ Gói tin bị Rớt: Không tìm thấy đường đi (Network Unreachable)!`, 'error');
+    }
+}
+
+// --- VÒNG LẶP ANIMATION GÓI TIN ---
+let lastTime = 0;
+function animationLoop(time) {
+    let dt = time - lastTime;
+    lastTime = time;
+    
+    // Giới hạn dt nếu tab bị inactive
+    if (dt > 100) dt = 16; 
+
+    if (packets.length > 0) {
+        let needsCleanup = false;
+        
+        packets.forEach(p => {
+            if (p.status !== 'moving') return;
+
+            // Tốc độ: tiến độ tăng thêm sau mỗi frame
+            p.progress += 0.002 * dt; 
+
+            if (p.progress >= 1) {
+                p.segmentIndex++;
+                p.progress = 0;
+                
+                // Tới đích
+                if (p.segmentIndex >= p.pathIds.length - 1) {
+                    p.status = 'arrived';
+                    addLog(`✅ Thành công: Dữ liệu đã đến đích!`, 'success');
+                    needsCleanup = true;
+                } else {
+                    // Kiểm tra node tiếp theo có bị tắt bất ngờ không
+                    const nextNodeId = p.pathIds[p.segmentIndex + 1];
+                    const nextNode = nodes.find(n => n.id === nextNodeId);
+                    if (nextNode && nextNode.status === 'down') {
+                        p.status = 'dropped';
+                        addLog(`💥 Dữ liệu bị rớt tại ${nextNode.label} do sập thiết bị!`, 'error');
+                        needsCleanup = true;
+                    }
+                }
+            }
+        });
+
+        // Vẽ Packets
+        elLayerPackets.innerHTML = packets.map(p => {
+            if (p.status === 'removing' || p.segmentIndex >= p.pathIds.length - 1) return '';
+            
+            const n1 = nodes.find(n => n.id === p.pathIds[p.segmentIndex]);
+            const n2 = nodes.find(n => n.id === p.pathIds[p.segmentIndex + 1]);
+            if (!n1 || !n2) return '';
+
+            const x = n1.x + (n2.x - n1.x) * p.progress;
+            const y = n1.y + (n2.y - n1.y) * p.progress;
+            
+            const fill = p.status === 'dropped' ? '#ef4444' : '#3b82f6';
+            const shadow = p.status === 'dropped' ? 'glow-red' : 'glow animate-pulse-fast';
+
+            return `<circle cx="${x}" cy="${y}" r="6" fill="${fill}" class="${shadow}" />`;
+        }).join('');
+
+        // Xóa gói tin hoàn thành sau 1 giây
+        if (needsCleanup) {
+            packets.forEach(p => {
+                if (p.status === 'arrived' || p.status === 'dropped') {
+                    p.status = 'removing';
+                    setTimeout(() => {
+                        packets = packets.filter(pkt => pkt.id !== p.id);
+                    }, 1500);
+                }
+            });
+        }
+    } else {
+        // Clear rác nếu hết gói tin
+        if(elLayerPackets.innerHTML !== '') elLayerPackets.innerHTML = '';
+    }
+
+    requestAnimationFrame(animationLoop);
+}
+
+// Chạy
+init();
+
+</script>
+</body>
+</html>

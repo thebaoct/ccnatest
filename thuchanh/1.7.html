@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mô phỏng Nguyên lý Mạng Không Dây (Wi-Fi)</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        /* CSS Animations cho sóng Wi-Fi */
+        @keyframes ripple {
+            0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.5); }
+            100% { box-shadow: 0 0 0 50px rgba(59, 130, 246, 0); }
+        }
+        @keyframes ripple-error {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5); }
+            100% { box-shadow: 0 0 0 50px rgba(239, 68, 68, 0); }
+        }
+        @keyframes ripple-interference {
+            0% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.5); }
+            100% { box-shadow: 0 0 0 80px rgba(245, 158, 11, 0); }
+        }
+        
+        .wifi-waves {
+            border-radius: 50%;
+            animation: ripple 2s infinite;
+        }
+        .wifi-waves.error {
+            animation: ripple-error 2s infinite;
+        }
+        .interference-waves {
+            border-radius: 50%;
+            animation: ripple-interference 1.5s infinite;
+        }
+
+        /* Khu vực mô phỏng */
+        #simulation-area {
+            position: relative;
+            height: 300px;
+            background: linear-gradient(to right, #f8fafc, #e2e8f0);
+            overflow: hidden;
+            border-radius: 0.5rem;
+            border: 1px solid #cbd5e1;
+            /* Ngăn cuộn trang khi vuốt trên điện thoại */
+            touch-action: none; 
+        }
+
+        /* Lớp cho phép kéo thả */
+        .draggable {
+            position: absolute;
+            cursor: grab;
+            z-index: 10;
+            user-select: none;
+        }
+        .draggable:active {
+            cursor: grabbing;
+            z-index: 20;
+        }
+
+        #interference-node {
+            display: none;
+            z-index: 5;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 font-sans p-2 md:p-6">
+
+    <div class="max-w-6xl mx-auto bg-white rounded-xl shadow-lg overflow-hidden">
+        <!-- Header -->
+        <div class="bg-blue-600 text-white p-4 text-center">
+            <h1 class="text-2xl font-bold"><i class="fa-solid fa-wifi mr-2"></i> THE BÁO: 1.7 Trình mô phỏng Mạng Không Dây (Wi-Fi)</h1>
+            <p class="text-sm mt-1 opacity-90">Học về SSID, Mật khẩu, Tần số vô tuyến (RF), Khoảng cách & Nhiễu sóng</p>
+        </div>
+
+        <!-- Trực quan hóa (Visualizer) -->
+        <div class="p-4">
+            <div class="flex justify-between items-end mb-2">
+                <h2 class="font-semibold text-lg text-gray-700">Mô hình thực tế ảo</h2>
+                <span class="text-xs font-bold text-blue-600 bg-blue-100 px-2 py-1 rounded animate-pulse">
+                    <i class="fa-solid fa-hand-pointer mr-1"></i> Kéo thả các thiết bị để di chuyển
+                </span>
+            </div>
+            
+            <div id="simulation-area">
+                <!-- Router -->
+                <div id="router-node" class="draggable flex flex-col items-center" style="left: 10%; top: 40%;">
+                    <div id="router-signal" class="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center wifi-waves text-blue-600 text-2xl">
+                        <i class="fa-solid fa-router"></i>
+                    </div>
+                    <span class="text-xs font-bold mt-2 bg-white px-2 py-1 rounded shadow pointer-events-none">Router AP</span>
+                </div>
+
+                <!-- Interference (Nhiễu) -->
+                <div id="interference-node" class="draggable flex flex-col items-center" style="left: 50%; top: 10%;">
+                    <div class="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center interference-waves text-orange-500 text-xl pointer-events-none">
+                        <i class="fa-solid fa-wave-square"></i>
+                    </div>
+                    <span class="text-xs font-bold mt-2 bg-white px-2 py-1 rounded shadow text-orange-600 pointer-events-none">Nguồn nhiễu</span>
+                </div>
+
+                <!-- Client (Laptop/Phone) -->
+                <div id="client-node" class="draggable flex flex-col items-center" style="left: 30%; top: 45%;">
+                    <div class="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center text-gray-700 text-xl shadow-inner pointer-events-none">
+                        <i class="fa-solid fa-mobile-screen"></i>
+                    </div>
+                    <span class="text-xs font-bold mt-2 bg-white px-2 py-1 rounded shadow pointer-events-none">Thiết bị</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bảng trạng thái & Giải thích (Hậu quả) -->
+        <div class="mx-4 mb-4 p-4 rounded-lg border-l-4" id="status-panel">
+            <div class="flex items-center">
+                <div id="status-icon" class="text-2xl mr-3"><i class="fa-solid fa-circle-info"></i></div>
+                <div>
+                    <h3 id="status-title" class="font-bold text-lg">Chưa kết nối</h3>
+                    <p id="status-desc" class="text-sm text-gray-600">Hãy thiết lập Router và Thiết bị để bắt đầu.</p>
+                </div>
+            </div>
+            <!-- Thông số kỹ thuật hiển thị -->
+            <div class="mt-3 grid grid-cols-3 gap-2 text-center text-sm bg-white/50 p-2 rounded">
+                <div>Chất lượng tín hiệu: <strong id="metric-signal">-</strong></div>
+                <div>Tốc độ mạng: <strong id="metric-speed">-</strong></div>
+                <div>Ping: <strong id="metric-ping">-</strong></div>
+            </div>
+        </div>
+
+        <!-- Bảng điều khiển -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-gray-50 border-t">
+            
+            <!-- Cột 1: Cấu hình Router -->
+            <div class="bg-white p-4 rounded shadow-sm border border-blue-200">
+                <h3 class="font-bold text-blue-700 mb-3 border-b pb-2"><i class="fa-solid fa-server mr-1"></i> Cấu hình Router (AP)</h3>
+                
+                <div class="mb-3">
+                    <label class="block text-xs font-semibold mb-1 text-gray-600">Tên mạng (SSID)</label>
+                    <input type="text" id="r-ssid" value="Home_Network" class="w-full p-2 border rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                
+                <div class="mb-3">
+                    <label class="block text-xs font-semibold mb-1 text-gray-600">Mật khẩu (WPA2)</label>
+                    <input type="text" id="r-pass" value="12345678" class="w-full p-2 border rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+
+                <div class="mb-3 flex items-center justify-between">
+                    <label class="text-xs font-semibold text-gray-600">Phát ẩn (Hide SSID)</label>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="r-hide" class="sr-only peer">
+                        <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                    </label>
+                </div>
+
+                <div class="mb-1">
+                    <label class="block text-xs font-semibold mb-1 text-gray-600">Kênh Wi-Fi (2.4GHz Channel)</label>
+                    <select id="r-channel" class="w-full p-2 border rounded text-sm outline-none">
+                        <option value="1">Kênh 1</option>
+                        <option value="6" selected>Kênh 6</option>
+                        <option value="11">Kênh 11</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Cột 2: Cấu hình Thiết bị -->
+            <div class="bg-white p-4 rounded shadow-sm border border-green-200">
+                <h3 class="font-bold text-green-700 mb-3 border-b pb-2"><i class="fa-solid fa-mobile-screen mr-1"></i> Thiết bị người dùng</h3>
+                
+                <!-- Danh sách mạng quét được -->
+                <div class="mb-3">
+                    <label class="block text-xs font-semibold mb-1 text-gray-600">Quét mạng Wi-Fi (Tự động)</label>
+                    <div id="c-scanned" class="w-full p-2 bg-gray-100 border rounded text-sm min-h-[38px] flex items-center text-gray-500 cursor-pointer hover:bg-gray-200 transition">
+                        Nhấn để quét...
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="block text-xs font-semibold mb-1 text-gray-600">SSID muốn kết nối (Nhập tay)</label>
+                    <input type="text" id="c-ssid" placeholder="Nhập tên mạng..." class="w-full p-2 border rounded text-sm focus:ring-2 focus:ring-green-500 outline-none">
+                </div>
+                
+                <div class="mb-3">
+                    <label class="block text-xs font-semibold mb-1 text-gray-600">Mật khẩu nhập vào</label>
+                    <input type="text" id="c-pass" placeholder="Nhập mật khẩu..." class="w-full p-2 border rounded text-sm focus:ring-2 focus:ring-green-500 outline-none">
+                </div>
+
+                <div class="mb-1 bg-green-50 p-2 rounded border border-green-100">
+                    <label class="block text-xs font-semibold text-gray-600 text-center">
+                        Khoảng cách (Tính toán tự động): <br>
+                        <span id="distance-val" class="text-green-600 font-bold text-lg">0m</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Cột 3: Môi trường (Nhiễu) -->
+            <div class="bg-white p-4 rounded shadow-sm border border-orange-200">
+                <h3 class="font-bold text-orange-700 mb-3 border-b pb-2"><i class="fa-solid fa-bolt mr-1"></i> Môi trường & Nhiễu (RF)</h3>
+                <p class="text-xs text-gray-600 mb-3">Sóng RF dễ bị nhiễu bởi thiết bị khác cùng kênh. <strong>Mức độ nhiễu phụ thuộc vào khoảng cách Nguồn nhiễu đến Thiết bị của bạn.</strong></p>
+                
+                <div class="mb-3 flex items-center justify-between">
+                    <label class="text-xs font-semibold text-gray-600">Bật nguồn gây nhiễu</label>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="e-interfere-on" class="sr-only peer">
+                        <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-orange-500"></div>
+                    </label>
+                </div>
+
+                <div class="mb-1" id="interference-settings" style="opacity: 0.5; pointer-events: none;">
+                    <label class="block text-xs font-semibold mb-1 text-gray-600">Kênh phát nhiễu</label>
+                    <select id="e-channel" class="w-full p-2 border rounded text-sm outline-none">
+                        <option value="1">Kênh 1 (Nhà hàng xóm A)</option>
+                        <option value="6">Kênh 6 (Lò vi sóng/Bluetooth)</option>
+                        <option value="11">Kênh 11 (Nhà hàng xóm B)</option>
+                    </select>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Script Logic -->
+    <script>
+        // DOM Elements
+        const rSsid = document.getElementById('r-ssid');
+        const rPass = document.getElementById('r-pass');
+        const rHide = document.getElementById('r-hide');
+        const rChannel = document.getElementById('r-channel');
+        
+        const cScanned = document.getElementById('c-scanned');
+        const cSsid = document.getElementById('c-ssid');
+        const cPass = document.getElementById('c-pass');
+        const distanceVal = document.getElementById('distance-val');
+        
+        const eInterfereOn = document.getElementById('e-interfere-on');
+        const eChannel = document.getElementById('e-channel');
+        const intSettings = document.getElementById('interference-settings');
+        
+        const clientNode = document.getElementById('client-node');
+        const interferenceNode = document.getElementById('interference-node');
+        const routerNode = document.getElementById('router-node');
+        const routerSignal = document.getElementById('router-signal');
+        const simulationArea = document.getElementById('simulation-area');
+        
+        const statusPanel = document.getElementById('status-panel');
+        const statusIcon = document.getElementById('status-icon');
+        const statusTitle = document.getElementById('status-title');
+        const statusDesc = document.getElementById('status-desc');
+        
+        const metricSignal = document.getElementById('metric-signal');
+        const metricSpeed = document.getElementById('metric-speed');
+        const metricPing = document.getElementById('metric-ping');
+
+        // Hàm hỗ trợ kéo thả (Drag and Drop)
+        function makeDraggable(elmnt) {
+            let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+            
+            // Xử lý cả chuột và cảm ứng (Touch)
+            elmnt.onmousedown = dragMouseDown;
+            elmnt.ontouchstart = dragMouseDown;
+
+            function dragMouseDown(e) {
+                e = e || window.event;
+                // e.preventDefault(); // Không dùng preventDefault ở đây để tránh lỗi input fields
+                
+                // Tránh lỗi click vào text bên trong
+                if (e.target.tagName === 'SPAN' || e.target.tagName === 'I') return;
+
+                if (e.type === 'touchstart') {
+                    pos3 = e.touches[0].clientX;
+                    pos4 = e.touches[0].clientY;
+                } else {
+                    pos3 = e.clientX;
+                    pos4 = e.clientY;
+                }
+                
+                document.onmouseup = closeDragElement;
+                document.onmousemove = elementDrag;
+                document.ontouchend = closeDragElement;
+                document.ontouchmove = elementDrag;
+            }
+
+            function elementDrag(e) {
+                e = e || window.event;
+                if(e.cancelable) e.preventDefault(); // Ngăn cuộn màn hình khi đang kéo
+                
+                let clientX, clientY;
+                if (e.type === 'touchmove') {
+                    clientX = e.touches[0].clientX;
+                    clientY = e.touches[0].clientY;
+                } else {
+                    clientX = e.clientX;
+                    clientY = e.clientY;
+                }
+
+                pos1 = pos3 - clientX;
+                pos2 = pos4 - clientY;
+                pos3 = clientX;
+                pos4 = clientY;
+                
+                let newTop = elmnt.offsetTop - pos2;
+                let newLeft = elmnt.offsetLeft - pos1;
+                
+                // Giới hạn không cho ra ngoài khung simulation-area
+                const parentRect = simulationArea.getBoundingClientRect();
+                const elmntRect = elmnt.getBoundingClientRect();
+                
+                if (newTop < 0) newTop = 0;
+                if (newLeft < 0) newLeft = 0;
+                if (newTop + elmntRect.height > parentRect.height) newTop = parentRect.height - elmntRect.height;
+                if (newLeft + elmntRect.width > parentRect.width) newLeft = parentRect.width - elmntRect.width;
+
+                elmnt.style.top = newTop + "px";
+                elmnt.style.left = newLeft + "px";
+                
+                // Chạy lại mô phỏng mỗi khi di chuyển
+                runSimulation();
+            }
+
+            function closeDragElement() {
+                document.onmouseup = null;
+                document.onmousemove = null;
+                document.ontouchend = null;
+                document.ontouchmove = null;
+            }
+        }
+
+        // Áp dụng kéo thả cho 3 biểu tượng
+        makeDraggable(routerNode);
+        makeDraggable(clientNode);
+        makeDraggable(interferenceNode);
+
+        // Lấy tâm của một phần tử để đo khoảng cách
+        function getCenter(el) {
+            return {
+                x: el.offsetLeft + el.offsetWidth / 2,
+                y: el.offsetTop + el.offsetHeight / 2
+            };
+        }
+
+        // Hàm tính toán logic mạng
+        function runSimulation() {
+            // 1. Lấy dữ liệu cấu hình
+            const router = {
+                ssid: rSsid.value.trim(),
+                pass: rPass.value.trim(),
+                hide: rHide.checked,
+                channel: rChannel.value
+            };
+            
+            const client = {
+                ssid: cSsid.value.trim(),
+                pass: cPass.value.trim()
+            };
+            
+            const env = {
+                interference: eInterfereOn.checked,
+                channel: eChannel.value
+            };
+
+            // 2. Tính toán khoảng cách vật lý (Dựa trên tọa độ)
+            const rCenter = getCenter(routerNode);
+            const cCenter = getCenter(clientNode);
+            const iCenter = getCenter(interferenceNode);
+            
+            // Giả sử chiều rộng của khung là 40 mét
+            const maxMeters = 40; 
+            const pxToMeters = maxMeters / simulationArea.offsetWidth;
+            
+            // Khoảng cách Router -> Client
+            const distPx = Math.hypot(cCenter.x - rCenter.x, cCenter.y - rCenter.y);
+            const distanceMeters = distPx * pxToMeters;
+            distanceVal.innerText = distanceMeters.toFixed(1) + "m";
+
+            // Hiển thị/Ẩn nguồn nhiễu
+            if(env.interference) {
+                interferenceNode.style.display = 'flex';
+                intSettings.style.opacity = '1';
+                intSettings.style.pointerEvents = 'auto';
+            } else {
+                interferenceNode.style.display = 'none';
+                intSettings.style.opacity = '0.5';
+                intSettings.style.pointerEvents = 'none';
+            }
+
+            // Xử lý nút quét mạng
+            if(router.hide) {
+                cScanned.innerText = "[Mạng ẩn] - Không tìm thấy";
+                cScanned.className = "w-full p-2 bg-gray-100 border border-dashed rounded text-sm min-h-[38px] flex items-center text-gray-400 italic";
+            } else {
+                cScanned.innerText = "📶 " + router.ssid;
+                cScanned.className = "w-full p-2 bg-blue-50 border border-blue-300 rounded text-sm min-h-[38px] flex items-center text-blue-700 cursor-pointer font-bold hover:bg-blue-100";
+            }
+
+            // 3. Logic Đánh giá Kết nối & Tín hiệu
+            // Công thức sóng: Ở 0m -> 100%. Suy giảm ~2.5% mỗi mét.
+            let signalStrength = 100 - (distanceMeters * 2.5); 
+            if (signalStrength < 0) signalStrength = 0;
+            if (signalStrength > 100) signalStrength = 100;
+            signalStrength = Math.round(signalStrength);
+
+            let isConnected = false;
+            let statusType = 'neutral';
+            let msgTitle = "";
+            let msgDesc = "";
+            let speed = "0 Mbps";
+            let ping = "---";
+            
+            // Lỗi 1: Sai SSID
+            if (client.ssid !== router.ssid) {
+                if (client.ssid === "") {
+                    statusType = 'neutral';
+                    msgTitle = "Chưa thử kết nối";
+                    msgDesc = "Nhập SSID để kết nối. Nếu mạng không ẩn, nhấn vào ô Quét mạng phía trên để tự điền.";
+                } else if (client.ssid.toLowerCase() === router.ssid.toLowerCase()) {
+                    statusType = 'error';
+                    msgTitle = "Lỗi SSID: Sai chữ hoa/thường";
+                    msgDesc = "SSID phân biệt chữ hoa và chữ thường (Case-sensitive). 'Home' khác với 'home'.";
+                } else {
+                    statusType = 'error';
+                    msgTitle = "Lỗi SSID: Không tìm thấy mạng";
+                    msgDesc = "Thiết bị đang gửi yêu cầu (Probe Request) tới một SSID không tồn tại.";
+                }
+            } 
+            // Lỗi 2: Sai Pass
+            else if (client.pass !== router.pass) {
+                statusType = 'error';
+                msgTitle = "Lỗi Xác thực: Sai mật khẩu";
+                msgDesc = "Bắt tay 4 bước (4-Way Handshake) WPA2 thất bại. Router từ chối cấp quyền truy cập.";
+            }
+            // Lỗi 3: Đúng thông tin, nhưng Quá xa
+            else if (signalStrength < 15) {
+                statusType = 'warning';
+                msgTitle = "Lỗi RF: Mất kết nối do quá xa";
+                msgDesc = "Sóng vô tuyến (RF) suy hao nghiêm trọng theo khoảng cách. Hãy kéo thiết bị lại gần Router hơn.";
+                signalStrength = 0;
+            }
+            // Đã kết nối thành công, tính toán tốc độ và nhiễu
+            else {
+                isConnected = true;
+                
+                // Tính toán nhiễu (Khoảng cách Nhiễu -> Client)
+                let interferenceImpact = 0;
+                if (env.interference && env.channel === router.channel) {
+                    const distIntPx = Math.hypot(cCenter.x - iCenter.x, cCenter.y - iCenter.y);
+                    const distIntMeters = distIntPx * pxToMeters;
+                    
+                    // Nhiễu gần thiết bị (Client) thì ảnh hưởng cực mạnh. Tối đa giảm 60% chất lượng.
+                    // Nếu nhiễu cách xa trên 25m thì gần như không ảnh hưởng.
+                    interferenceImpact = Math.max(0, 60 - (distIntMeters * 2.4)); 
+                }
+
+                let quality = signalStrength - interferenceImpact;
+                if (quality < 10) quality = 10;
+
+                if (interferenceImpact > 10) {
+                    statusType = 'warning';
+                    msgTitle = "Kết nối thành công (Bị Nhiễu Sóng Nặng)";
+                    msgDesc = "Nguồn nhiễu đang CÙNG KÊNH ("+ router.channel +") và Ở RẤT GẦN thiết bị của bạn. Gây ra xung đột gói tin. Đổi Kênh Wi-Fi ở Router hoặc kéo thiết bị ra xa nguồn nhiễu!";
+                    speed = Math.floor(quality * 0.5) + " Mbps";
+                    ping = Math.floor(80 + (100 - quality) * 2.5 + Math.random()*150) + " ms";
+                } else if (signalStrength < 40) {
+                    statusType = 'success-weak';
+                    msgTitle = "Kết nối thành công (Sóng yếu)";
+                    msgDesc = "Thiết bị ở khá xa Router. Tốc độ truyền tải tự động giảm xuống để đảm bảo gói tin không bị lỗi.";
+                    speed = Math.floor(quality * 1.5) + " Mbps";
+                    ping = Math.floor(30 + (100 - quality)) + " ms";
+                } else {
+                    statusType = 'success';
+                    msgTitle = "Kết nối Hoàn hảo";
+                    msgDesc = "Tín hiệu mạnh, không bị nhiễu cùng kênh. Đạt hiệu suất cao nhất.";
+                    speed = Math.floor(quality * 3.5) + " Mbps";
+                    ping = Math.floor(5 + Math.random()*10) + " ms";
+                }
+            }
+
+            // 4. Áp dụng UI Update
+            if (isConnected) {
+                let sigText = signalStrength > 70 ? "Tuyệt vời" : (signalStrength > 40 ? "Khá" : "Kém");
+                metricSignal.innerHTML = `<span class="${signalStrength>40?'text-green-600':'text-orange-500'}">${signalStrength}% (${sigText})</span>`;
+                metricSpeed.innerText = speed;
+                metricPing.innerText = ping;
+            } else {
+                metricSignal.innerHTML = `<span class="text-red-500">${signalStrength}% (Mất sóng)</span>`;
+                metricSpeed.innerText = "0 Mbps";
+                metricPing.innerText = "---";
+            }
+
+            statusPanel.className = "mx-4 mb-4 p-4 rounded-lg border-l-4 transition-all duration-300 ";
+            routerSignal.className = "w-12 h-12 rounded-full flex items-center justify-center text-2xl transition-all ";
+            
+            if (statusType === 'neutral') {
+                statusPanel.classList.add('bg-gray-100', 'border-gray-400');
+                statusIcon.innerHTML = '<i class="fa-solid fa-circle-info text-gray-500"></i>';
+                routerSignal.classList.add('bg-blue-100', 'text-blue-600', 'wifi-waves');
+            } 
+            else if (statusType === 'error') {
+                statusPanel.classList.add('bg-red-50', 'border-red-500');
+                statusIcon.innerHTML = '<i class="fa-solid fa-circle-xmark text-red-500"></i>';
+                routerSignal.classList.add('bg-red-100', 'text-red-600', 'wifi-waves', 'error');
+            }
+            else if (statusType === 'warning' || statusType === 'success-weak') {
+                statusPanel.classList.add('bg-orange-50', 'border-orange-500');
+                statusIcon.innerHTML = '<i class="fa-solid fa-triangle-exclamation text-orange-500"></i>';
+                routerSignal.classList.add('bg-orange-100', 'text-orange-600', 'wifi-waves');
+            }
+            else if (statusType === 'success') {
+                statusPanel.classList.add('bg-green-50', 'border-green-500');
+                statusIcon.innerHTML = '<i class="fa-solid fa-circle-check text-green-500"></i>';
+                routerSignal.classList.add('bg-green-100', 'text-green-600', 'wifi-waves');
+                routerSignal.style.animation = "none";
+                setTimeout(() => { routerSignal.style.animation = "ripple 2s infinite"; }, 10);
+            }
+
+            statusTitle.innerText = msgTitle;
+            statusDesc.innerText = msgDesc;
+        }
+
+        // 5. Gắn Event Listeners cho các Input
+        const inputs = [rSsid, rPass, rHide, rChannel, cSsid, cPass, eInterfereOn, eChannel];
+        inputs.forEach(input => {
+            input.addEventListener('input', runSimulation);
+            input.addEventListener('change', runSimulation);
+        });
+
+        // Click vào tên mạng quét được để tự điền
+        cScanned.addEventListener('click', () => {
+            if(!rHide.checked) {
+                cSsid.value = rSsid.value;
+                runSimulation();
+            }
+        });
+
+        // Khởi chạy lần đầu sau khi load DOM
+        window.onload = function() {
+            runSimulation();
+        };
+
+    </script>
+</body>
+</html>
