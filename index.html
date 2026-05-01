@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Khóa Học CCNA Chuyên Nghiệp</title>
+    <!-- style.css (giao diện, màu sắc, hiệu ứng…) -->
+    <link rel="stylesheet" href="style.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <!-- Hiển thị ảnh nhỏ ở góc màn hình về QR ngân hàng[cite: 1] -->
+    <div class="qr-floating">
+        <img src="nganhang.png" alt="QR Ngân Hàng"> <!--[cite: 1] -->
+        <p>Ủng hộ chủ TUS 👉👈</p> <!--[cite: 1] -->
+    </div>
+
+    <header>
+        <h1><i class="fas fa-network-wired"></i> Kiến Trúc Mạng CCNA</h1>
+        <p>Hành trình từ "Gõ lệnh" đến "Tư duy lập trình mạng"</p>
+    </header>
+
+    <main>
+        <!-- Các thông tin từ 1 đến 6 dưới đây được đóng dưới dạng khung dashboard[cite: 1] -->
+        <section id="main-dashboard" class="dashboard-grid">
+            <!-- Các thẻ (cards) chủ đề 1-6 sẽ được JS tạo tự động tại đây -->
+        </section>
+
+        <!-- Khi click vào khung 1-6 thì sẽ hiện ra cửa sổ pop-up có thông tin về nội dung[cite: 1] -->
+        <div id="popup-modal" class="modal hidden">
+            <div class="modal-content">
+                <span class="close-btn">&times;</span>
+                <h2 id="modal-title"></h2>
+                <div id="modal-body"></div>
+            </div>
+        </div>
+
+        <hr class="section-divider">
+
+        <!-- Giao diện trang con thứ 1 & 2: Dashboard danh sách bài học và Nội dung[cite: 1] -->
+        <section id="course-section" class="course-container">
+            
+            <!-- Giao diện trang con thứ 1: Các chủ đề từ 1 đến 6 thành cột dọc[cite: 1] -->
+            <aside id="sidebar" class="sidebar">
+                <h3 style="color: #fff; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px;">Danh Mục Khóa Học</h3>
+                <!-- Danh sách chủ đề (Accordion) sẽ được render bằng JS -->
+            </aside>
+
+            <!-- Giao diện trang con thứ 2: Thông tin nội dung của bài học tương ứng[cite: 1] -->
+            <article id="lesson-content" class="lesson-view hidden">
+                <h2 id="lesson-title"></h2>
+                <div id="lesson-body" class="lesson-body"></div>
+                
+                <div id="lesson-media" class="media-container">
+                    <!-- Ảnh nằm trong tệp “/lythuyet/x.png” với kích thước ngang 16:9[cite: 1] -->
+                    <img id="lesson-image" src="" alt="Hình ảnh lý thuyết" class="lesson-img">
+                </div>
+                
+                <!-- Nút bấm dẫn đến phòng lab của bài học[cite: 1] -->
+                <a id="lab-btn" href="#" target="_blank" class="btn-lab">
+                    <i class="fas fa-laptop-code"></i> Thực Hành Mô Phỏng Tại Đây <!--[cite: 1] -->
+                </a>
+            </article>
+        </section>
+    </main>
+
+    <!-- script.js (File xử lí logic)[cite: 1] -->
+    <script src="script.js"></script>
+</body>
+</html>
